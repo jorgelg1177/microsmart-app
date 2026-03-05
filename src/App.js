@@ -94,8 +94,8 @@ export default function App() {
   const [activeTab, setActiveTab] = useState("home");
   const [doorStatus, setDoorStatus] = useState("idle");
   const [authorizedNames, setAuthorizedNames] = useState([
-    { name: "Carlos García", phone: "+34 600 111 222" },
-    { name: "María López", phone: "+34 600 333 444" },
+    { name: "Jorge Apellido", phone: "+34 600 111 222" },
+    { name: "Karla Apellido", phone: "+34 600 333 444" },
   ]);
   const [newName, setNewName] = useState("");
   const [newPhone, setNewPhone] = useState("");
@@ -122,8 +122,7 @@ export default function App() {
   const [chatHistory, setChatHistory] = useState([
     {
       role: "ai",
-      content:
-        "Hola, soy el conserje inteligente de MicroSmart. ¿Con quién tengo el gusto de hablar y en qué puedo asistirle?",
+      content: "Conserje automático de MicroSmart. ¿A quién busca?",
     },
   ]);
   const [apiHistory, setApiHistory] = useState([]);
@@ -219,7 +218,6 @@ export default function App() {
       utterance.lang = "es-ES";
       const voices = window.speechSynthesis.getVoices();
 
-      // Intentar forzar voces Premium/Enhanced en móviles o escritorio
       let bestVoice = voices.find(
         (v) =>
           (v.lang.startsWith("es-") || v.lang === "es") &&
@@ -411,24 +409,22 @@ export default function App() {
         ? authorizedNamesRef.current.map((p) => p.name).join(", ")
         : "Nadie";
 
-    const systemPrompt = `Eres el CONSERJE VIRTUAL INTELIGENTE de una VIVIENDA de alta seguridad (MicroSmart). Eres exclusivamente el conserje.
-REGLAS DE SEGURIDAD (CUMPLE AL 100%):
-1. ES UNA VIVIENDA, NO UN EDIFICIO: Habla siempre refiriéndote a "esta vivienda".
-2. AMABILIDAD Y CORTESÍA: Sé siempre muy amable, profesional y firme con la seguridad.
-3. PRIVACIDAD ABSOLUTA (¡CRÍTICO!): NUNCA reveles, completes ni sugieras el nombre o apellido de los propietarios. Si el visitante dice "Busco a Carlos" o "Traigo un paquete para Carlos", NUNCA le digas "¿Para Carlos García?". Debes preguntar: "¿Me podría indicar el apellido exacto de la persona a la que busca, por favor?".
-4. REGLA DEL SILENCIO SOBRE LA CASA: NUNCA digas que "no hay nadie en casa" ni ofrezcas dejar recados HASTA QUE el visitante haya dicho el NOMBRE Y APELLIDO EXACTOS y estos coincidan con la lista. Si dicen un nombre incorrecto o incompleto, simplemente di que se han equivocado de vivienda o insiste en pedir el nombre completo para verificar.
-5. FRASE EXACTA PARA PAQUETES: Si es un repartidor y ya verificaste que la empresa y el destinatario (nombre y apellido) son correctos, tu respuesta DEBE INCLUIR ESTA FRASE EXACTA antes de abrir: "Por favor, entre y ponga el paquete en un lugar seguro y cierre la puerta al salir, por favor y gracias."
-6. NO REPITAS SALUDOS: Ya saludaste al inicio. No vuelvas a decir Hola o Buenos días durante la charla.
-7. MEMORIA PERFECTA: Recuerda toda la conversación de forma inteligente. Si ya sabes de qué empresa vienen o a quién buscan, no lo preguntes de nuevo.
+    const systemPrompt = `Eres el CONSERJE VIRTUAL de una vivienda (MicroSmart).
+REGLAS ESTRICTAS:
+1. ULTRA RÁPIDO: Los repartidores tienen prisa. Habla con frases de máximo 10-15 palabras. Ve directo al grano.
+2. PRIVACIDAD: NUNCA digas apellidos. Si dicen un nombre, pregunta rápido: "¿Me indica el apellido?".
+3. REGLA DEL SILENCIO: No digas si hay alguien ni ofrezcas recados HASTA confirmar nombre y apellido exactos de la lista. Si se equivocan de nombre, di rápido: "Se ha equivocado de vivienda".
+4. FRASE PARA PAQUETES: Si verificas empresa y destinatario correcto, di EXACTAMENTE y nada más: "Puede pasar. Deje el paquete dentro y cierre. Gracias."
+5. CERO RODEOS: No saludes de nuevo, no des explicaciones largas.
 
 LISTA DE PROPIETARIOS AUTORIZADOS: [${allowedNamesList}].
 
-PROTOCOLO Y ETIQUETAS SECRETAS:
-A. REPARTIDORES VERIFICADOS (Nombre+Apellido exactos + Empresa): Usa al final: [ABRIR_PUERTA | Empresa | Destinatario]
-B. VISITAS VERIFICADAS (Nombre+Apellido exactos en la lista): Ofrece dejar un recado. Usa al final: [MENSAJE_PARA | NombreAutorizado | texto]
-C. RECHAZO (No coincide el nombre completo): Indica que no reside nadie con ese nombre completo y deniega el acceso. Usa al final: [ACCESO_DENEGADO | Motivo]
+ETIQUETAS SECRETAS (Añade una al final según corresponda):
+A. REPARTIDOR VERIFICADO: [ABRIR_PUERTA | Empresa | Destinatario]
+B. VISITA VERIFICADA (ofrece recado rápido): [MENSAJE_PARA | NombreAutorizado | texto]
+C. RECHAZO (Mal nombre o sospechoso): [ACCESO_DENEGADO | Motivo]
 
-Añade [FIN_CONVERSACION] solo cuando autorices paso, guardes recado o rechaces definitivamente.`;
+Añade [FIN_CONVERSACION] solo al terminar definitivamente.`;
 
     let validApiHistory = [...apiHistoryRef.current];
     let combinedText = textToSend;
@@ -450,7 +446,7 @@ Añade [FIN_CONVERSACION] solo cuando autorices paso, guardes recado o rechaces 
         body: JSON.stringify({
           systemInstruction: { parts: [{ text: systemPrompt }] },
           contents: contents,
-          generationConfig: { temperature: 0.3 },
+          generationConfig: { temperature: 0.2 },
         }),
       });
       let aiText = data.candidates?.[0]?.content?.parts?.[0]?.text;
@@ -467,7 +463,6 @@ Añade [FIN_CONVERSACION] solo cuando autorices paso, guardes recado o rechaces 
         endConversation = false;
       const finalAiText = aiText.replace(/\[.*?\]/g, "").trim();
 
-      // LOGICA PARA ATRAPAR ETIQUETAS DE LA IA
       const abrirMatch = aiText.match(
         /\[ABRIR_PUERTA\s*\|\s*(.*?)\s*\|\s*(.*?)\]/
       );
@@ -475,7 +470,6 @@ Añade [FIN_CONVERSACION] solo cuando autorices paso, guardes recado o rechaces 
         actionType = "opened";
         const empresa = abrirMatch[1].trim();
         const destinatario = abrirMatch[2].trim();
-
         setHistoryLog((prev) => [
           {
             id: Date.now(),
@@ -496,7 +490,6 @@ Añade [FIN_CONVERSACION] solo cuando autorices paso, guardes recado o rechaces 
         actionType = "message_saved";
         const destinatario = mensajeMatch[1].trim();
         const textoMensaje = mensajeMatch[2].trim();
-
         setMessagesList((prev) => [
           {
             id: Date.now(),
@@ -509,7 +502,6 @@ Añade [FIN_CONVERSACION] solo cuando autorices paso, guardes recado o rechaces 
           },
           ...prev,
         ]);
-
         setHistoryLog((prev) => [
           {
             id: Date.now() + 1,
