@@ -36,28 +36,15 @@ const fetchWithRetry = async (url, options, retries = 2, delay = 1000) => {
     const res = await fetch(url, options);
     if (!res.ok) {
       const errorData = await res.json().catch(() => null);
-      console.error("Error de API:", res.status, errorData);
-      if (res.status === 401)
-        throw new Error("Error 401: Clave de API inválida o revocada.");
-      if (res.status === 404)
-        throw new Error("Error 404: El modelo de IA no se encuentra.");
-      if (res.status === 400 || res.status === 403 || res.status === 429) {
-        throw new Error(
-          `Error de Google (${res.status}): ${
-            errorData?.error?.message || "Revisar clave API o cuota"
-          }`
-        );
-      }
-      throw new Error(`Error HTTP: ${res.status}`);
+      if (res.status === 401) throw new Error("Clave de API inválida.");
+      if (res.status === 404) throw new Error("Modelo de IA no encontrado.");
+      throw new Error(
+        `Error ${res.status}: ${errorData?.error?.message || "Error de red"}`
+      );
     }
     return await res.json();
   } catch (error) {
-    if (
-      retries > 0 &&
-      !error.message.includes("Error 401") &&
-      !error.message.includes("Error 404") &&
-      !error.message.includes("Error de Google")
-    ) {
+    if (retries > 0) {
       await new Promise((r) => setTimeout(r, delay));
       return fetchWithRetry(url, options, retries - 1, delay * 2);
     }
@@ -96,7 +83,6 @@ export default function App() {
   const [authorizedNames, setAuthorizedNames] = useState([
     { name: "Jorge", phone: "+34 600 000 000" },
     { name: "Karla León Núñez", phone: "+34 600 000 000" },
-    { name: "Andrés", phone: "+34 600 000 000" },
   ]);
   const [newName, setNewName] = useState("");
   const [newPhone, setNewPhone] = useState("");
@@ -122,7 +108,7 @@ export default function App() {
     {
       role: "ai",
       content:
-        "Hola, buenas tardes. Soy el asistente de MicroSmart. ¿Dígame con quién desea hablar, por favor?",
+        "Hola, buenas tardes. Soy el asistente de MicroSmart. ¿En qué puedo ayudarle?",
     },
   ]);
   const [apiHistory, setApiHistory] = useState([]);
@@ -140,20 +126,34 @@ export default function App() {
   useEffect(() => {
     if ("speechSynthesis" in window) {
       window.speechSynthesis.getVoices();
-      window.speechSynthesis.onvoiceschanged = () =>
-        window.speechSynthesis.getVoices();
     }
   }, []);
+
+  const handleAddName = () => {
+    if (newName.trim() && newPhone.trim()) {
+      const formattedPhone = newPhone.startsWith("+")
+        ? newPhone.trim()
+        : `+34 ${newPhone.trim()}`;
+      setAuthorizedNames([
+        ...authorizedNames,
+        { name: newName.trim(), phone: formattedPhone },
+      ]);
+      setNewName("");
+      setNewPhone("");
+    }
+  };
+
+  const handleRemoveName = (nameToRemove) => {
+    setAuthorizedNames(
+      authorizedNames.filter((person) => person.name !== nameToRemove)
+    );
+  };
 
   const speakResponse = (text) => {
     if ("speechSynthesis" in window) {
       window.speechSynthesis.cancel();
       const cleanText = text.replace(/\[.*?\]/g, "").trim();
-      if (!cleanText) {
-        isProcessingRef.current = false;
-        if (isFluidModeRef.current) setTimeout(startListening, 300);
-        return;
-      }
+      if (!cleanText) return;
       const utterance = new SpeechSynthesisUtterance(cleanText);
       utterance.lang = "es-ES";
       const voices = window.speechSynthesis.getVoices();
@@ -163,16 +163,9 @@ export default function App() {
           (v.name.includes("Premium") ||
             v.name.includes("Enhanced") ||
             v.name.includes("Google") ||
-            v.name.includes("Siri") ||
-            v.name.includes("Natural"))
+            v.name.includes("Siri"))
       );
-      if (!bestVoice)
-        bestVoice = voices.find(
-          (v) => v.lang.startsWith("es-") || v.lang === "es"
-        );
       if (bestVoice) utterance.voice = bestVoice;
-      utterance.rate = 1.0;
-      utterance.pitch = 1.0;
       isSpeakingRef.current = true;
       utterance.onend = () => {
         isSpeakingRef.current = false;
@@ -198,11 +191,7 @@ export default function App() {
           !isSpeakingRef.current
         ) {
           setTimeout(() => {
-            if (
-              isFluidModeRef.current &&
-              !isProcessingRef.current &&
-              !isSpeakingRef.current
-            )
+            if (isFluidModeRef.current && !isProcessingRef.current)
               try {
                 recognitionRef.current.start();
               } catch (e) {}
@@ -217,16 +206,10 @@ export default function App() {
           handleSimulateVisitor(transcript);
         }
       };
-      recognitionRef.current.onerror = () => setIsListening(false);
     }
-    if (
-      isFluidModeRef.current &&
-      !isProcessingRef.current &&
-      !isSpeakingRef.current
-    )
-      try {
-        recognitionRef.current.start();
-      } catch (e) {}
+    try {
+      if (isFluidModeRef.current) recognitionRef.current.start();
+    } catch (e) {}
   };
 
   const toggleFluidMode = () => {
@@ -234,15 +217,8 @@ export default function App() {
       isFluidModeRef.current = false;
       setIsFluidMode(false);
       setIsListening(false);
-      isProcessingRef.current = false;
-      isSpeakingRef.current = false;
       if (recognitionRef.current) recognitionRef.current.stop();
-      window.speechSynthesis.cancel();
     } else {
-      if ("speechSynthesis" in window) {
-        const unlock = new SpeechSynthesisUtterance("");
-        window.speechSynthesis.speak(unlock);
-      }
       isFluidModeRef.current = true;
       setIsFluidMode(true);
       startListening();
@@ -253,7 +229,6 @@ export default function App() {
     if (doorStatus !== "idle") return;
     setDoorStatus("opening");
     try {
-      if (!firebaseUrl) throw new Error("Falta la URL de Firebase");
       await fetch(`${firebaseUrl}/puerta.json`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
@@ -265,14 +240,14 @@ export default function App() {
           id: Date.now(),
           type: "manual",
           title: "Apertura Manual",
-          desc: "Desde App",
+          desc: "Acceso concedido",
           time: getCurrentTime(),
           date: "Hoy",
         },
         ...prev,
       ]);
     } catch (error) {
-      alert("Error de conexión con la nube.");
+      console.error(error);
     } finally {
       setTimeout(() => setDoorStatus("idle"), 2000);
     }
@@ -281,91 +256,57 @@ export default function App() {
   const handleSimulateVisitor = async (textOverride) => {
     const textToSend = textOverride || chatInput;
     if (!textToSend.trim() || isTyping) return;
-    if (!apiKey) {
-      setChatHistory((prev) => [
-        ...prev,
-        { role: "ai", content: "⚠️ Error: Clave API no configurada." },
-      ]);
-      return;
-    }
-
     isProcessingRef.current = true;
-    if (recognitionRef.current) recognitionRef.current.stop();
     setChatHistory((prev) => [...prev, { role: "user", content: textToSend }]);
     setChatInput("");
     setIsTyping(true);
 
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${aiModel}:generateContent?key=${apiKey}`;
-    const allowedNamesList =
-      authorizedNamesRef.current.length > 0
-        ? authorizedNamesRef.current.map((p) => p.name).join(", ")
-        : "Nadie";
-
-    const systemPrompt = `Eres el CONSERJE INTELIGENTE de la vivienda MicroSmart. Tu objetivo es gestionar las visitas con RAZONAMIENTO LÓGICO, SEGURIDAD y AMABILIDAD EXTREMA.
-
-INSTRUCCIONES DE COMPORTAMIENTO:
-1. ANÁLISIS DE INTENCIÓN: Escucha bien al visitante. ¿Viene a entregar algo? ¿Es un amigo? ¿Viene por un servicio técnico? Actúa según el contexto.
-2. AMABILIDAD Y MODALES: Saluda siempre ("Hola", "Buenas tardes"), usa "por favor", "sería tan amable" y despídete calurosamente ("Que tenga un buen día", "Gracias por su visita").
-3. FLEXIBILIDAD COGNITIVA: Si el visitante se equivoca ligeramente (ej. dice "Carla León" pero el registro es "Karla León Núñez"), utiliza la lógica para entender que es ella. No seas un robot rígido. Si no estás seguro, pide el apellido de forma educada: "Disculpe, ¿me podría indicar el segundo apellido para confirmar?".
-4. SEGURIDAD PROACTIVA: NUNCA reveles quién vive en la casa ni si están dentro. Si preguntan "¿Está Jorge?", responde: "Para poder anunciarle, ¿me indica su nombre y el motivo de su visita, por favor?".
-5. PROTOCOLO DE REPARTIDORES: Si es un repartidor y confirma el destinatario correcto, sé ejecutivo: "Entendido, puede pasar. Por favor, deje el paquete dentro y asegúrese de cerrar bien la puerta al salir. ¡Muchas gracias!".
-6. OFRECER RECADOS: Si la persona no está autorizada o el residente no puede atender, ofrece de forma proactiva guardar un mensaje: "Lo siento, en este momento no pueden atenderle. Si gusta, puede dejarme un recado y yo se lo haré llegar de inmediato".
-
-LISTA DE RESIDENTES: [${allowedNamesList}].
-
-ETIQUETAS PARA EL SISTEMA (Añade una al final de tu respuesta):
-- [ABRIR_PUERTA | Empresa/Motivo | Destinatario] -> Solo si el destinatario es correcto.
-- [MENSAJE_PARA | NombreResidente | Texto del recado] -> Si deciden dejar un mensaje.
-- [ACCESO_DENEGADO | Motivo] -> Si el comportamiento es sospechoso o erróneo tras varios intentos.
-- [FIN_CONVERSACION] -> Añádela solo cuando te despidas definitivamente tras completar una acción o rechazo.`;
-
-    let validApiHistory = [...apiHistoryRef.current];
-    let combinedText = textToSend;
-    if (
-      validApiHistory.length > 0 &&
-      validApiHistory[validApiHistory.length - 1].role === "user"
-    ) {
-      const lastMsg = validApiHistory.pop();
-      combinedText = lastMsg.parts[0].text + ". " + textToSend;
-    }
-    const newApiMsg = { role: "user", parts: [{ text: combinedText }] };
-    const contents = [...validApiHistory, newApiMsg];
+    const allowedNamesList = authorizedNamesRef.current
+      .map((p) => p.name)
+      .join(", ");
+    const systemPrompt = `Eres el CONSERJE INTELIGENTE de MicroSmart. Analiza y razona con lógica:
+    1. AMABILIDAD: Saluda y despídete siempre de forma educada.
+    2. RAZONAMIENTO: Si el nombre coincide parcialmente con la lista [${allowedNamesList}], usa la lógica para confirmar. 
+    3. SEGURIDAD: No confirmes quién vive allí si no dicen el nombre primero.
+    4. REPARTIDORES: Si es verificado, abre con la etiqueta [ABRIR_PUERTA].
+    5. RECADOS: Si no pueden atender, ofrece guardar un mensaje [MENSAJE_PARA].
+    Usa [FIN_CONVERSACION] al despedirte.`;
 
     try {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${aiModel}:generateContent?key=${apiKey}`;
+      const contents = [
+        ...apiHistoryRef.current,
+        { role: "user", parts: [{ text: textToSend }] },
+      ];
       const data = await fetchWithRetry(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           systemInstruction: { parts: [{ text: systemPrompt }] },
-          contents: contents,
+          contents,
           generationConfig: { temperature: 0.4 },
         }),
       });
-      let aiText = data.candidates?.[0]?.content?.parts?.[0]?.text;
-      if (!aiText) throw new Error("Sin respuesta.");
 
-      const updatedHistory = [
+      let aiText =
+        data.candidates?.[0]?.content?.parts?.[0]?.text ||
+        "No entiendo, ¿podría repetir?";
+      apiHistoryRef.current = [
         ...contents,
         { role: "model", parts: [{ text: aiText }] },
       ];
-      setApiHistory(updatedHistory);
-      apiHistoryRef.current = updatedHistory;
 
-      let actionType = null,
-        endConversation = false;
-      const finalAiText = aiText.replace(/\[.*?\]/g, "").trim();
-
+      const cleanAiText = aiText.replace(/\[.*?\]/g, "").trim();
       const abrirMatch = aiText.match(
         /\[ABRIR_PUERTA\s*\|\s*(.*?)\s*\|\s*(.*?)\]/
       );
+
       if (abrirMatch) {
-        actionType = "opened";
-        if (firebaseUrl)
-          fetch(`${firebaseUrl}/puerta.json`, {
-            method: "PUT",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify("ABRIR"),
-          });
+        fetch(`${firebaseUrl}/puerta.json`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify("ABRIR"),
+        });
         setHistoryLog((prev) => [
           {
             id: Date.now(),
@@ -379,162 +320,73 @@ ETIQUETAS PARA EL SISTEMA (Añade una al final de tu respuesta):
         ]);
       }
 
-      const mensajeMatch = aiText.match(
-        /\[MENSAJE_PARA\s*\|\s*(.*?)\s*\|\s*(.*?)\]/
-      );
-      if (mensajeMatch) {
-        actionType = "message_saved";
-        const dest = mensajeMatch[1].trim();
-        setMessagesList((prev) => [
-          {
-            id: Date.now(),
-            recipient: dest,
-            content: mensajeMatch[2].trim(),
-            time: getCurrentTime(),
-            phone:
-              authorizedNamesRef.current.find((p) =>
-                p.name.includes(dest.split(" ")[0])
-              )?.phone || "",
-          },
-          ...prev,
-        ]);
-        setHistoryLog((prev) => [
-          {
-            id: Date.now() + 1,
-            type: "ai_message",
-            title: `Recado guardado`,
-            desc: `Para: ${dest}`,
-            time: getCurrentTime(),
-            date: "Hoy",
-          },
-          ...prev,
-        ]);
-      }
-
-      if (aiText.includes("[FIN_CONVERSACION]")) endConversation = true;
-      setChatHistory((prev) => [
-        ...prev,
-        { role: "ai", content: finalAiText, action: actionType },
-      ]);
-      isProcessingRef.current = false;
-      if (endConversation) {
+      setChatHistory((prev) => [...prev, { role: "ai", content: cleanAiText }]);
+      if (aiText.includes("[FIN_CONVERSACION]")) {
         isFluidModeRef.current = false;
         setIsFluidMode(false);
       }
-      speakResponse(finalAiText);
-    } catch (error) {
-      setChatHistory((prev) => [
-        ...prev,
-        { role: "ai", content: `⚠️ Error de conexión.` },
-      ]);
-      isProcessingRef.current = false;
-      if (isFluidModeRef.current) setTimeout(startListening, 1500);
+      speakResponse(cleanAiText);
+    } catch (e) {
+      console.error(e);
     } finally {
       setIsTyping(false);
+      isProcessingRef.current = false;
     }
   };
 
   return (
     <div className="fixed inset-0 w-screen h-[100dvh] bg-[#f3f4f6] flex items-center justify-center font-sans text-slate-900 overflow-hidden">
-      <div className="w-full max-w-md h-full md:h-[92vh] md:max-h-[850px] md:rounded-[3rem] bg-white shadow-[0_20px_50px_rgba(0,0,0,0.1)] overflow-hidden flex flex-col relative md:border-[10px] border-[#1e293b]">
-        <div className="hidden md:block h-6 w-1/3 bg-[#1e293b] absolute top-0 left-1/2 -translate-x-1/2 rounded-b-2xl z-30"></div>
-        <div className="bg-white px-6 pt-8 pb-3 flex flex-col z-10 border-b border-slate-50 shrink-0">
-          <div className="flex justify-between items-center mb-3">
-            <MicroSmartLogo className="h-[84px] w-auto flex items-center" />
-            <div className="flex space-x-1">
-              <button className="p-2 hover:bg-slate-100 rounded-full transition-colors relative">
-                <Bell size={20} className="text-slate-600" />
-              </button>
-              <button className="p-2 hover:bg-slate-100 rounded-full transition-colors">
-                <Menu size={20} className="text-slate-600" />
-              </button>
-            </div>
-          </div>
-          <div className="flex items-center space-x-3 p-3 bg-slate-50 rounded-2xl border border-slate-100">
-            <div className="w-10 h-10 bg-[#00479b] rounded-xl flex items-center justify-center shadow-lg shadow-blue-900/10">
-              <User size={20} className="text-white" />
-            </div>
-            <div className="overflow-hidden">
-              <h1 className="text-base font-bold text-slate-800 leading-tight truncate">
-                Hola, {authorizedNames[0]?.name}
-              </h1>
-              <p className="text-[10px] text-slate-500 font-medium flex items-center">
-                <MapPin size={10} className="mr-1 text-[#7bc100]" />{" "}
-                microsmart.es
-              </p>
+      <div className="w-full max-w-md h-full md:h-[92vh] md:max-h-[850px] md:rounded-[3rem] bg-white shadow-2xl overflow-hidden flex flex-col relative md:border-[10px] border-[#1e293b]">
+        {/* Cabecera */}
+        <div className="bg-white px-6 pt-10 pb-3 border-b border-slate-50 shrink-0">
+          <div className="flex justify-between items-center mb-4">
+            <MicroSmartLogo className="h-[70px] flex items-center" />
+            <div className="w-10 h-10 bg-[#00479b] rounded-xl flex items-center justify-center text-white shadow-lg">
+              <User size={20} />
             </div>
           </div>
         </div>
-        <div className="flex-1 overflow-y-auto pb-24 px-6 pt-2 scrollbar-hide">
+
+        {/* Contenido Principal */}
+        <div className="flex-1 overflow-y-auto pb-24 px-6 pt-4 scrollbar-hide">
           {activeTab === "home" && (
-            <div className="flex flex-col items-center space-y-8 py-8 animate-in fade-in zoom-in duration-500">
-              <div
-                className={`inline-flex items-center space-x-2 px-4 py-1.5 rounded-full text-[10px] font-bold transition-all ${
-                  doorStatus === "idle"
-                    ? "bg-green-50 text-green-600"
-                    : "bg-blue-50 text-blue-600"
-                }`}
-              >
-                <div
-                  className={`w-2 h-2 rounded-full ${
-                    doorStatus === "idle"
-                      ? "bg-green-500"
-                      : "bg-blue-500 animate-pulse"
-                  }`}
-                ></div>
-                <span>SISTEMA ONLINE</span>
+            <div className="flex flex-col items-center py-10 space-y-10">
+              <div className="flex items-center space-x-2 bg-green-50 px-4 py-2 rounded-full text-[10px] font-bold text-green-600">
+                <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                <span>SISTEMA CONECTADO A LA NUBE</span>
               </div>
               <button
                 onClick={handleOpenDoor}
                 disabled={doorStatus !== "idle"}
-                className={`relative w-56 h-56 rounded-full flex flex-col items-center justify-center shadow-2xl transition-all duration-300 transform active:scale-95 ${
-                  doorStatus === "idle"
-                    ? "bg-gradient-to-tr from-[#6aa600] to-[#8be000] shadow-[#7bc100]/30"
-                    : "bg-[#00479b] shadow-blue-900/30"
+                className={`w-52 h-52 rounded-full flex flex-col items-center justify-center shadow-2xl transition-all active:scale-95 ${
+                  doorStatus === "idle" ? "bg-[#7bc100]" : "bg-[#00479b]"
                 }`}
               >
-                {doorStatus === "idle" ? (
-                  <>
-                    <Power size={56} className="text-white mb-2" />
-                    <span className="text-white text-xl font-black">ABRIR</span>
-                  </>
-                ) : (
-                  <>
-                    <ShieldCheck
-                      size={56}
-                      className="text-white mb-2 animate-bounce"
-                    />
-                    <span className="text-white text-lg font-bold">
-                      PROCESANDO
-                    </span>
-                  </>
-                )}
+                <Power size={50} className="text-white mb-2" />
+                <span className="text-white font-black text-xl">
+                  {doorStatus === "idle" ? "ABRIR" : "..."}
+                </span>
               </button>
             </div>
           )}
+
           {activeTab === "ai" && (
-            <div className="flex flex-col h-full animate-in slide-in-from-bottom-4 duration-500 bg-slate-50 -mx-6 rounded-t-[2.5rem] overflow-hidden border-t border-slate-200">
-              <div className="p-5 pb-2 flex justify-between items-center bg-white/50 backdrop-blur-sm sticky top-0 z-10">
-                <div>
-                  <h2 className="text-lg font-black text-slate-800 flex items-center">
-                    <Sparkles size={18} className="mr-2 text-[#00479b]" />{" "}
-                    Conserje Pro
-                  </h2>
-                  <p className="text-[9px] font-bold text-slate-400 mt-1 uppercase tracking-widest">
-                    Conversación Inteligente
-                  </p>
-                </div>
+            <div className="flex flex-col h-full bg-slate-50 -mx-6 rounded-t-3xl border-t border-slate-200">
+              <div className="p-4 flex justify-between items-center bg-white/50 backdrop-blur-sm sticky top-0">
+                <h2 className="text-sm font-black text-slate-800 flex items-center">
+                  <Bot size={18} className="mr-2 text-[#00479b]" /> Conserje Pro
+                </h2>
                 <div
-                  className={`px-2 py-1 ${
+                  className={`px-3 py-1 text-[8px] font-black rounded-full ${
                     isFluidMode
                       ? "bg-green-100 text-green-700"
-                      : "bg-slate-100 text-slate-500"
-                  } text-[8px] font-black rounded-full`}
+                      : "bg-slate-200 text-slate-500"
+                  }`}
                 >
-                  {isFluidMode ? "MODO ACTIVO" : "MODO DORMIDO"}
+                  {isFluidMode ? "MODO VOZ ACTIVO" : "MODO DORMIDO"}
                 </div>
               </div>
-              <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+              <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
                 {chatHistory.map((msg, idx) => (
                   <div
                     key={idx}
@@ -543,92 +395,138 @@ ETIQUETAS PARA EL SISTEMA (Añade una al final de tu respuesta):
                     }`}
                   >
                     <div
-                      className={`max-w-[85%] px-4 py-3 rounded-2xl text-base leading-relaxed shadow-sm ${
+                      className={`max-w-[85%] px-4 py-3 rounded-2xl text-sm ${
                         msg.role === "user"
                           ? "bg-[#00479b] text-white rounded-br-none"
-                          : "bg-white text-slate-700 rounded-bl-none border border-slate-100"
+                          : "bg-white text-slate-700 rounded-bl-none shadow-sm"
                       }`}
                     >
                       {msg.content}
                     </div>
                   </div>
                 ))}
-                {isTyping && (
-                  <div className="flex justify-start">
-                    <div className="bg-white border border-slate-100 px-4 py-2 rounded-2xl rounded-bl-none shadow-sm flex space-x-1">
-                      <div className="w-1 h-1 bg-slate-300 rounded-full animate-bounce"></div>
-                      <div
-                        className="w-1 h-1 bg-slate-300 rounded-full animate-bounce"
-                        style={{ animationDelay: "0.2s" }}
-                      ></div>
-                      <div
-                        className="w-1 h-1 bg-slate-300 rounded-full animate-bounce"
-                        style={{ animationDelay: "0.4s" }}
-                      ></div>
-                    </div>
-                  </div>
-                )}
-                <div ref={chatEndRef} />
               </div>
-              <div className="p-4 bg-white border-t border-slate-100">
-                <div className="flex flex-col items-center space-y-4">
-                  <button
-                    onClick={toggleFluidMode}
-                    className={`w-20 h-20 rounded-full flex items-center justify-center transition-all duration-500 shadow-xl ${
-                      isFluidMode
-                        ? isListening
-                          ? "bg-red-500 scale-110 animate-pulse ring-8 ring-red-100"
-                          : "bg-amber-400 ring-8 ring-amber-50"
-                        : "bg-slate-200"
-                    }`}
-                  >
-                    {isFluidMode ? (
-                      isListening ? (
-                        <Mic size={32} className="text-white" />
-                      ) : (
-                        <Volume2 size={32} className="text-white" />
-                      )
-                    ) : (
-                      <MicOff size={32} className="text-slate-400" />
-                    )}
-                  </button>
-                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">
-                    {isFluidMode
-                      ? isListening
-                        ? "Le escucho..."
-                        : "Analizando..."
-                      : "Toque para hablar"}
-                  </p>
-                </div>
+              <div className="p-6 bg-white border-t border-slate-100 flex flex-col items-center">
+                <button
+                  onClick={toggleFluidMode}
+                  className={`w-20 h-20 rounded-full flex items-center justify-center shadow-xl transition-all ${
+                    isFluidMode
+                      ? "bg-red-500 ring-8 ring-red-50"
+                      : "bg-slate-200"
+                  }`}
+                >
+                  <Mic
+                    size={30}
+                    className={isFluidMode ? "text-white" : "text-slate-400"}
+                  />
+                </button>
+                <p className="text-[10px] font-bold text-slate-400 mt-4 uppercase tracking-widest">
+                  {isListening ? "Le escucho..." : "Toque para hablar"}
+                </p>
               </div>
             </div>
           )}
+
+          {activeTab === "settings" && (
+            <div className="py-4 space-y-6 animate-in fade-in duration-500">
+              <h2 className="text-xl font-black text-slate-800 tracking-tight">
+                Configuración
+              </h2>
+
+              {/* Sección de Personas Autorizadas (LA QUE FALTABA) */}
+              <div className="bg-white rounded-3xl p-5 shadow-sm border border-slate-100">
+                <div className="flex items-center space-x-3 mb-4">
+                  <UserPlus size={18} className="text-[#00479b]" />
+                  <h3 className="font-bold text-slate-800 text-sm">
+                    Residentes en la casa
+                  </h3>
+                </div>
+
+                <div className="space-y-2 mb-6">
+                  {authorizedNames.map((person, index) => (
+                    <div
+                      key={index}
+                      className="flex justify-between items-center bg-slate-50 p-3 rounded-xl border border-slate-100"
+                    >
+                      <div>
+                        <span className="text-xs font-bold text-slate-700 block">
+                          {person.name}
+                        </span>
+                        <span className="text-[9px] text-slate-400 font-bold">
+                          {person.phone}
+                        </span>
+                      </div>
+                      <button
+                        onClick={() => handleRemoveName(person.name)}
+                        className="text-red-400 p-2 hover:bg-red-50 rounded-lg"
+                      >
+                        <X size={16} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="space-y-3 pt-4 border-t border-slate-50">
+                  <p className="text-[10px] font-black text-slate-400 uppercase">
+                    Añadir nuevo residente
+                  </p>
+                  <input
+                    type="text"
+                    value={newName}
+                    onChange={(e) => setNewName(e.target.value)}
+                    placeholder="Nombre completo"
+                    className="w-full bg-slate-50 border border-slate-200 text-sm rounded-xl px-4 py-3 focus:outline-none focus:ring-2 ring-blue-100"
+                  />
+                  <div className="flex space-x-2">
+                    <input
+                      type="tel"
+                      value={newPhone}
+                      onChange={(e) => setNewPhone(e.target.value)}
+                      placeholder="Teléfono"
+                      className="flex-1 bg-slate-50 border border-slate-200 text-sm rounded-xl px-4 py-3 focus:outline-none"
+                    />
+                    <button
+                      onClick={handleAddName}
+                      className="bg-[#00479b] text-white px-6 rounded-xl text-xs font-bold shadow-lg"
+                    >
+                      AÑADIR
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-white rounded-3xl p-5 shadow-sm border border-slate-100">
+                <div className="flex items-center space-x-3 mb-1">
+                  <Wifi size={18} className="text-[#7bc100]" />
+                  <h3 className="font-bold text-slate-800 text-sm">
+                    Estado del Interfono
+                  </h3>
+                </div>
+                <p className="text-[10px] text-slate-400 font-medium ml-8">
+                  Conectado vía Firebase Cloud
+                </p>
+              </div>
+            </div>
+          )}
+
           {activeTab === "history" && (
-            <div className="py-4 space-y-3">
-              <h2 className="text-xl font-black text-slate-800 mb-6">
-                Registro
+            <div className="py-4 space-y-4">
+              <h2 className="text-xl font-black text-slate-800 mb-4">
+                Registro de Actividad
               </h2>
               {historyLog.map((log) => (
                 <div
                   key={log.id}
-                  className="bg-white p-4 rounded-3xl shadow-sm border border-slate-100 flex items-center space-x-3"
+                  className="bg-white p-4 rounded-3xl shadow-sm border border-slate-100 flex items-center space-x-4"
                 >
                   <div
-                    className={`p-2.5 rounded-xl ${
+                    className={`p-3 rounded-xl ${
                       log.type === "ai_open"
-                        ? "bg-green-100 text-[#7bc100]"
-                        : log.type === "ai_message"
-                        ? "bg-amber-100 text-amber-500"
+                        ? "bg-green-100 text-green-600"
                         : "bg-blue-100 text-[#00479b]"
                     }`}
                   >
-                    {log.type === "ai_open" ? (
-                      <Package size={18} />
-                    ) : log.type === "ai_message" ? (
-                      <MessageSquare size={18} />
-                    ) : (
-                      <User size={18} />
-                    )}
+                    <Package size={20} />
                   </div>
                   <div className="flex-1">
                     <h4 className="font-bold text-slate-800 text-xs">
@@ -636,33 +534,29 @@ ETIQUETAS PARA EL SISTEMA (Añade una al final de tu respuesta):
                     </h4>
                     <p className="text-[10px] text-slate-500">{log.desc}</p>
                   </div>
-                  <div className="text-right">
-                    <span className="text-[10px] font-black text-slate-700">
-                      {log.time}
-                    </span>
-                  </div>
+                  <span className="text-[10px] font-black text-slate-700">
+                    {log.time}
+                  </span>
                 </div>
               ))}
             </div>
           )}
+
           {activeTab === "messages" && (
             <div className="py-4 space-y-4">
-              <h2 className="text-xl font-black text-slate-800">Recados</h2>
+              <h2 className="text-xl font-black text-slate-800 mb-4">
+                Mensajes Recibidos
+              </h2>
               {messagesList.map((msg) => (
                 <div
                   key={msg.id}
-                  className="bg-white p-5 rounded-3xl shadow-md border-l-4 border-l-[#7bc100]"
+                  className="bg-white p-5 rounded-3xl shadow-md border-l-4 border-[#7bc100]"
                 >
                   <div className="flex justify-between items-start mb-2">
-                    <div>
-                      <span className="text-[8px] font-black text-[#00479b] tracking-tighter uppercase">
-                        PARA
-                      </span>
-                      <h4 className="font-black text-slate-800 text-sm">
-                        {msg.recipient}
-                      </h4>
-                    </div>
-                    <span className="text-[9px] font-bold text-slate-400">
+                    <h4 className="font-black text-slate-800 text-sm">
+                      Para: {msg.recipient}
+                    </h4>
+                    <span className="text-[10px] text-slate-400">
                       {msg.time}
                     </span>
                   </div>
@@ -670,29 +564,12 @@ ETIQUETAS PARA EL SISTEMA (Añade una al final de tu respuesta):
                     "{msg.content}"
                   </p>
                   <div className="flex space-x-2">
-                    <button
-                      onClick={() => handleDraftReply(msg)}
-                      disabled={draftingId === msg.id}
-                      className="flex-1 flex items-center justify-center bg-slate-800 text-white py-2.5 rounded-xl text-[10px] font-black transition-all shadow-lg active:scale-95"
-                    >
-                      {draftingId === msg.id ? (
-                        "REDACTANDO..."
-                      ) : (
-                        <>
-                          <Wand2 size={14} className="mr-2" /> REDACTAR
-                        </>
-                      )}
+                    <button className="flex-1 bg-slate-800 text-white py-2 rounded-xl text-[10px] font-bold">
+                      <Wand2 size={12} className="inline mr-2" /> REACCIONAR
                     </button>
                     <a
-                      href={`https://wa.me/${msg.phone.replace(
-                        /\D/g,
-                        ""
-                      )}?text=${encodeURIComponent(
-                        `Hola ${msg.recipient}, tienes un recado en MicroSmart: "${msg.content}"`
-                      )}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="p-2.5 bg-[#25d366] text-white rounded-xl shadow-lg active:scale-95"
+                      href={`https://wa.me/${msg.phone.replace(/\D/g, "")}`}
+                      className="p-2 bg-[#25d366] text-white rounded-xl"
                     >
                       <PhoneForwarded size={16} />
                     </a>
@@ -702,6 +579,8 @@ ETIQUETAS PARA EL SISTEMA (Añade una al final de tu respuesta):
             </div>
           )}
         </div>
+
+        {/* Menú Inferior */}
         <div className="absolute bottom-4 left-1/2 -translate-x-1/2 w-[92%] bg-white/95 backdrop-blur-xl border border-white/50 px-2 py-2 flex justify-between items-center z-20 rounded-[2rem] shadow-2xl">
           <NavItem
             active={activeTab === "home"}
@@ -744,24 +623,20 @@ function NavItem({ active, onClick, icon, label, badge }) {
   return (
     <button
       onClick={onClick}
-      className={`relative flex-1 flex flex-col items-center justify-center p-1.5 transition-all duration-300 ${
+      className={`relative flex-1 flex flex-col items-center justify-center p-2 transition-all duration-300 ${
         active ? "text-[#00479b]" : "text-slate-400"
       }`}
     >
-      <div
-        className={`transition-all duration-300 ${
-          active ? "scale-110 -translate-y-0.5" : "scale-100"
-        }`}
-      >
+      <div className={`transition-all ${active ? "scale-110" : "scale-100"}`}>
         {icon}
         {badge > 0 && (
-          <span className="absolute -top-1 -right-1.5 w-3.5 h-3.5 bg-red-500 text-white text-[7px] font-black rounded-full flex items-center justify-center border-2 border-white">
+          <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white text-[8px] font-black rounded-full flex items-center justify-center border-2 border-white">
             {badge}
           </span>
         )}
       </div>
       <span
-        className={`text-[7px] font-black uppercase tracking-tighter mt-1 transition-all ${
+        className={`text-[7px] font-black uppercase mt-1 ${
           active ? "opacity-100" : "opacity-0 h-0"
         }`}
       >
