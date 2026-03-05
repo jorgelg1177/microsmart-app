@@ -26,28 +26,29 @@ import {
   Volume2,
 } from "lucide-react";
 
-// Implementación de Backoff Exponencial mejorada - MODO DEBUG
-const fetchWithRetry = async (url, options, retries = 0, delay = 1000) => {
-  // NOTA: He puesto retries = 0 para que falle inmediatamente y veamos el error real sin esperar
+// Implementación de Backoff Exponencial protegida
+const fetchWithRetry = async (url, options, retries = 2, delay = 1000) => {
   try {
     const res = await fetch(url, options);
     if (!res.ok) {
-      // Intentamos leer el mensaje de error que nos manda Google
       const errorData = await res.json().catch(() => null);
       console.error("Error de API:", res.status, errorData);
-      // Lanzamos el error con el mensaje literal de Google
-      if (errorData && errorData.error && errorData.error.message) {
+      // Fallar rápido si es un error de clave, cuota o formato para no bloquear la app
+      if (res.status === 400 || res.status === 403 || res.status === 429) {
         throw new Error(
-          `Error de Google (${res.status}): ${errorData.error.message}`
+          `Error de Google (${res.status}): ${
+            errorData?.error?.message || "Revisar clave API"
+          }`
         );
-      } else {
-        throw new Error(`Error HTTP: ${res.status} - No hay más detalles`);
       }
+      throw new Error(`Error HTTP: ${res.status}`);
     }
     return await res.json();
   } catch (error) {
-    if (retries > 0) {
-      console.warn(`Reintentando petición... Intentos restantes: ${retries}`);
+    if (retries > 0 && !error.message.includes("Error de Google")) {
+      console.warn(
+        `Reintentando petición de red... Intentos restantes: ${retries}`
+      );
       await new Promise((r) => setTimeout(r, delay));
       return fetchWithRetry(url, options, retries - 1, delay * 2);
     }
@@ -299,8 +300,8 @@ export default function App() {
     setChatInput("");
     setIsTyping(true);
 
-    const apiKey = "AIzaSyDVE6h1s-PPAWXvYg-t_f9kf6y0YfskQRs";
-    // CAMBIO IMPORTANTE: Actualizado al modelo principal gemini-2.5-flash
+    // NUEVA CLAVE API INSTALADA AQUÍ
+    const apiKey = "AIzaSyD06jLabAFFFMxiZq0RAKQ7p5sWtwd8Mgw";
     const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
     const allowedNamesList =
       authorizedNames.length > 0
@@ -368,12 +369,12 @@ PROTOCOLO:
       speakResponse(finalAiText);
     } catch (error) {
       console.error("Fetch error capturado:", error);
-      // IMPRIMIR EL ERROR EXACTO EN PANTALLA PARA DIAGNÓSTICO
+      // Imprimimos el error técnico directamente para ayudar al diagnóstico rápido si falla algo.
       setChatHistory((prev) => [
         ...prev,
         {
           role: "ai",
-          content: `🕵️ MODO DIAGNÓSTICO. Error real detectado: ${error.message}. Por favor envía captura de pantalla de este mensaje.`,
+          content: `⚠️ Sistema: ${error.message}`,
         },
       ]);
 
