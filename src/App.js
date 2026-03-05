@@ -39,13 +39,11 @@ const fetchWithRetry = async (url, options, retries = 2, delay = 1000) => {
       console.error("Error de API:", res.status, errorData);
       if (res.status === 401) {
         throw new Error(
-          "Clave de API inválida o no proporcionada. Por favor, verifica la configuración."
+          "Error 401: Clave de API inválida, revocada o no encontrada. Comprueba las variables en Vercel."
         );
       }
       if (res.status === 404) {
-        throw new Error(
-          "El modelo de IA no se encuentra. Verifica el nombre del modelo en el código."
-        );
+        throw new Error("Error 404: El modelo de IA no se encuentra.");
       }
       if (res.status === 400 || res.status === 403 || res.status === 429) {
         throw new Error(
@@ -60,9 +58,9 @@ const fetchWithRetry = async (url, options, retries = 2, delay = 1000) => {
   } catch (error) {
     if (
       retries > 0 &&
-      !error.message.includes("Error de Google") &&
-      !error.message.includes("no se encuentra") &&
-      !error.message.includes("Clave de API inválida")
+      !error.message.includes("Error 401") &&
+      !error.message.includes("Error 404") &&
+      !error.message.includes("Error de Google")
     ) {
       await new Promise((r) => setTimeout(r, delay));
       return fetchWithRetry(url, options, retries - 1, delay * 2);
@@ -151,33 +149,33 @@ export default function App() {
   const [apiHistory, setApiHistory] = useState([]);
   const chatEndRef = useRef(null);
 
-  // --- SEGURIDAD: CLAVE API ---
-  // Detectar clave de forma compatible con múltiples entornos
-  const getApiKey = () => {
-    try {
-      // Intento para Vite/Vercel (VITE_ prefix is standard)
-      const viteKey = import.meta.env?.VITE_GEMINI_API_KEY;
-      if (viteKey) return viteKey;
-    } catch (e) {}
+  // --- SEGURIDAD: BÚSQUEDA EXHAUSTIVA DE CLAVE API ---
+  // Simplificado para evitar problemas de compilación en ciertos entornos.
+  // IMPORTANTE: Para que esto funcione en Vercel de forma segura, asegúrate de que
+  // VITE_GEMINI_API_KEY está definida en tus variables de entorno.
+  // En entornos donde process.env no está disponible, esta variable será indefinida
+  // y se mostrará un mensaje de error adecuado en la UI.
 
-    // Fallback para procesos o variables globales
-    return (
-      (typeof process !== "undefined"
-        ? process.env?.VITE_GEMINI_API_KEY
-        : null) || ""
-    );
+  const getApiKey = () => {
+    // Intentamos acceder a variables de entorno de diferentes maneras
+    // Se evitan accesos directos a import.meta si no es seguro
+    let key = "";
+    try {
+      if (typeof process !== "undefined" && process.env) {
+        key =
+          process.env.VITE_GEMINI_API_KEY ||
+          process.env.REACT_APP_GEMINI_API_KEY ||
+          process.env.NEXT_PUBLIC_GEMINI_API_KEY ||
+          "";
+      }
+    } catch (e) {
+      // Ignorar errores si process no está definido
+    }
+    return key ? key.trim() : "";
   };
 
   const apiKey = getApiKey();
-
-  // --- MODELO ADAPTATIVO ---
-  // Si usas tu propia clave (Vercel) usa el modelo público 1.5-flash.
-  // Si estás en el editor de pruebas, usa el modelo de preview.
-  // IMPORTANTE: Asegúrate de configurar la variable de entorno VITE_GEMINI_API_KEY en Vercel
-  // o proporcionar la clave directamente aquí durante el desarrollo (solo para pruebas).
-  const aiModel = apiKey
-    ? "gemini-1.5-flash"
-    : "gemini-2.5-flash-preview-09-2025";
+  const aiModel = "gemini-1.5-flash"; // Forzamos el modelo público y estable siempre para evitar el error 404
 
   useEffect(() => {
     authorizedNamesRef.current = authorizedNames;
@@ -194,7 +192,7 @@ export default function App() {
   const handleSummarizeActivity = async () => {
     if (!apiKey) {
       setActivitySummary(
-        "Error: Clave de API no configurada. Verifica la configuración en Vercel."
+        "Error: Clave de API no configurada. Revisa la configuración de entorno."
       );
       return;
     }
@@ -216,17 +214,14 @@ export default function App() {
           "No hay resumen disponible."
       );
     } catch (e) {
-      setActivitySummary("Error al generar resumen: " + e.message);
+      setActivitySummary(e.message);
     } finally {
       setIsSummarizing(false);
     }
   };
 
   const handleDraftReply = async (message) => {
-    if (!apiKey) {
-      console.error("Error: Clave de API no configurada.");
-      return;
-    }
+    if (!apiKey) return;
     setDraftingId(message.id);
     const prompt = `Redacta una respuesta de WhatsApp muy corta y amable para este recado: "${message.content}"`;
     try {
@@ -434,7 +429,7 @@ export default function App() {
         {
           role: "ai",
           content:
-            "⚠️ NOTA: Estás en el editor. Para usar la IA de forma segura, usa el despliegue oficial o configura la clave API correctamente.",
+            "⚠️ Sistema: No se detecta la clave API. Asegúrate de configurar la variable de entorno correspondiente en tu plataforma (como Vercel).",
         },
       ]);
       setIsTyping(false);
@@ -458,22 +453,22 @@ export default function App() {
     const systemPrompt = `Eres el CONSERJE VIRTUAL INTELIGENTE de una VIVIENDA de alta seguridad (MicroSmart). Eres exclusivamente el conserje.
 
 REGLAS DE SEGURIDAD (CUMPLE AL 100%):
-1. ES UNA VIVIENDA, NO UN EDIFICIO.
-2. AMABILIDAD Y CORTESÍA SIEMPRE.
-3. PRIVACIDAD ABSOLUTA: NUNCA reveles ni completes apellidos. Pregunta: "¿Me podría indicar el apellido exacto, por favor?".
-4. REGLA DEL SILENCIO: NUNCA digas que no hay nadie hasta que digan NOMBRE Y APELLIDO EXACTOS.
-5. FRASE EXACTA PARA PAQUETES: "Por favor, entre y ponga el paquete en un lugar seguro y cierre la puerta al salir, por favor y gracias."
-6. NO REPITAS SALUDOS.
-7. MEMORIA PERFECTA: Recuerda toda la charla.
+1. ES UNA VIVIENDA, NO UN EDIFICIO: Habla siempre refiriéndote a "esta vivienda".
+2. AMABILIDAD Y CORTESÍA: Sé siempre muy amable, profesional y firme con la seguridad.
+3. PRIVACIDAD ABSOLUTA (¡CRÍTICO!): NUNCA reveles, completes ni sugieras el nombre o apellido de los propietarios. Si el visitante dice "Busco a Carlos" o "Traigo un paquete para Carlos", NUNCA le digas "¿Para Carlos García?". Debes preguntar: "¿Me podría indicar el apellido exacto de la persona a la que busca, por favor?".
+4. REGLA DEL SILENCIO SOBRE LA CASA: NUNCA digas que "no hay nadie en casa" ni ofrezcas dejar recados HASTA QUE el visitante haya dicho el NOMBRE Y APELLIDO EXACTOS y estos coincidan con la lista. Si dicen un nombre incorrecto o incompleto, simplemente di que se han equivocado de vivienda o insiste en pedir el nombre completo para verificar.
+5. FRASE EXACTA PARA PAQUETES: Si es un repartidor y ya verificaste que la empresa y el destinatario (nombre y apellido) son correctos, tu respuesta DEBE INCLUIR ESTA FRASE EXACTA antes de abrir: "Por favor, entre y ponga el paquete en un lugar seguro y cierre la puerta al salir, por favor y gracias."
+6. NO REPITAS SALUDOS: Ya saludaste al inicio. No vuelvas a decir Hola o Buenos días durante la charla.
+7. MEMORIA PERFECTA: Recuerda toda la conversación de forma inteligente. Si ya sabes de qué empresa vienen o a quién buscan, no lo preguntes de nuevo.
 
-LISTA DE PROPIETARIOS: [${allowedNamesList}].
+LISTA DE PROPIETARIOS AUTORIZADOS: [${allowedNamesList}].
 
-PROTOCOLO:
-A. REPARTIDOR VERIFICADO: Usa frase de Regla 5. Etiqueta: [ABRIR_PUERTA | Empresa | Destinatario]
-B. VISITA VERIFICADA: Ofrece recado. Etiqueta: [MENSAJE_PARA | NombreAutorizado | texto]
-C. RECHAZO: Etiqueta: [ACCESO_DENEGADO | Motivo]
+PROTOCOLO Y ETIQUETAS SECRETAS:
+A. REPARTIDORES VERIFICADOS (Nombre+Apellido exactos + Empresa): Usa al final: [ABRIR_PUERTA | Empresa | Destinatario]
+B. VISITAS VERIFICADAS (Nombre+Apellido exactos en la lista): Ofrece dejar un recado. Usa al final: [MENSAJE_PARA | NombreAutorizado | texto]
+C. RECHAZO (No coincide el nombre completo): Indica que no reside nadie con ese nombre completo y deniega el acceso. Usa al final: [ACCESO_DENEGADO | Motivo]
 
-Añade [FIN_CONVERSACION] solo al terminar la gestión.`;
+Añade [FIN_CONVERSACION] solo cuando autorices paso, guardes recado o rechaces definitivamente.`;
 
     let validApiHistory = [...apiHistoryRef.current];
     let combinedText = textToSend;
@@ -499,7 +494,7 @@ Añade [FIN_CONVERSACION] solo al terminar la gestión.`;
         }),
       });
       let aiText = data.candidates?.[0]?.content?.parts?.[0]?.text;
-      if (!aiText) throw new Error("Respuesta vacía.");
+      if (!aiText) throw new Error("Respuesta vacía del servidor.");
 
       const updatedHistory = [
         ...contents,
@@ -520,6 +515,7 @@ Añade [FIN_CONVERSACION] solo al terminar la gestión.`;
         ...prev,
         { role: "ai", content: finalAiText, action: actionType },
       ]);
+
       isProcessingRef.current = false;
       if (endConversation) {
         isFluidModeRef.current = false;
@@ -861,6 +857,7 @@ Añade [FIN_CONVERSACION] solo al terminar la gestión.`;
               <h2 className="text-xl font-black text-slate-800 mb-6 tracking-tight">
                 Configuración
               </h2>
+
               <div className="bg-white rounded-3xl p-5 shadow-sm border border-slate-100">
                 <div className="flex items-center space-x-3 mb-4">
                   <UserPlus size={18} className="text-[#00479b]" />
@@ -868,6 +865,7 @@ Añade [FIN_CONVERSACION] solo al terminar la gestión.`;
                     Personas Autorizadas
                   </h3>
                 </div>
+
                 <div className="space-y-2 mb-4">
                   {authorizedNames.map((person, index) => (
                     <div
@@ -891,17 +889,18 @@ Añade [FIN_CONVERSACION] solo al terminar la gestión.`;
                     </div>
                   ))}
                 </div>
+
                 <div className="space-y-2">
                   <input
                     type="text"
                     value={newName}
                     onChange={(e) => setNewName(e.target.value)}
                     placeholder="Nombre completo"
-                    className="w-full bg-slate-50 border border-slate-200 text-base text-slate-800 rounded-lg px-3 py-2.5 focus:outline-none"
+                    className="w-full bg-slate-50 border border-slate-200 text-base text-slate-800 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#7bc100]/20"
                   />
                   <div className="flex space-x-2">
                     <div className="flex-1 bg-slate-50 border border-slate-200 rounded-lg flex items-center px-3">
-                      <span className="text-slate-400 text-sm font-bold pr-2 mr-2 border-r border-slate-200">
+                      <span className="text-slate-400 text-sm font-bold border-r border-slate-200 pr-2 mr-2">
                         +34
                       </span>
                       <input
@@ -921,6 +920,7 @@ Añade [FIN_CONVERSACION] solo al terminar la gestión.`;
                   </div>
                 </div>
               </div>
+
               <div className="bg-white rounded-3xl p-5 shadow-sm border border-slate-100 space-y-1">
                 <button className="w-full flex justify-between items-center p-2.5 hover:bg-slate-50 rounded-xl transition-all">
                   <div className="flex items-center space-x-3">
