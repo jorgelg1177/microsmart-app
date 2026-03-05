@@ -126,6 +126,7 @@ export default function App() {
   // Precargar las voces del sistema al iniciar
   useEffect(() => {
     if ("speechSynthesis" in window) {
+      // Fuerza al navegador a cargar la lista de voces
       window.speechSynthesis.getVoices();
       window.speechSynthesis.onvoiceschanged = () => {
         window.speechSynthesis.getVoices();
@@ -133,7 +134,7 @@ export default function App() {
     }
   }, []);
 
-  // --- LÓGICA DE VOZ Y SÍNTESIS MEJORADA ---
+  // --- LÓGICA DE VOZ Y SÍNTESIS MEJORADA PARA MÓVILES ---
   const speakResponse = (text) => {
     if ("speechSynthesis" in window) {
       window.speechSynthesis.cancel(); // Parar cualquier audio previo
@@ -149,27 +150,51 @@ export default function App() {
       const utterance = new SpeechSynthesisUtterance(cleanText);
       utterance.lang = "es-ES";
 
-      // Búsqueda inteligente de voces más naturales (Google, Premium, Mónica, Jorge...)
+      // Búsqueda exhaustiva de voces naturales para iOS y Android
       const voices = window.speechSynthesis.getVoices();
+
+      // Palabras clave de voces humanas de alta calidad en varios sistemas
+      const preferredNames = [
+        "google",
+        "premium",
+        "natural",
+        "monica",
+        "paulina",
+        "jorge",
+        "luciana",
+        "network",
+      ];
+
+      // 1. Intentar encontrar una voz "Premium" o de red explícita en español
       let bestVoice = voices.find(
         (v) =>
           (v.lang.startsWith("es-") || v.lang === "es") &&
-          (v.name.toLowerCase().includes("google") ||
-            v.name.toLowerCase().includes("premium") ||
-            v.name.toLowerCase().includes("natural"))
+          preferredNames.some((name) => v.name.toLowerCase().includes(name))
       );
-      // Si no encuentra una premium, coge la primera en español disponible
-      if (!bestVoice)
+
+      // 2. Si no hay una con nombre premium, buscar una voz que use servicio online (suelen ser mucho mejores)
+      if (!bestVoice) {
+        bestVoice = voices.find(
+          (v) =>
+            (v.lang.startsWith("es-") || v.lang === "es") &&
+            v.localService === false // false indica que procesa en la nube
+        );
+      }
+
+      // 3. Fallback final: cualquier voz en español
+      if (!bestVoice) {
         bestVoice = voices.find(
           (v) => v.lang.startsWith("es-") || v.lang === "es"
         );
+      }
 
       if (bestVoice) {
         utterance.voice = bestVoice;
       }
 
+      // Tono normal, ajustar rate un poco en móviles a veces ayuda a que suene menos trabado
       utterance.rate = 1.0;
-      utterance.pitch = 1.05; // Tono ligeramente más alto para sonar menos metálico
+      utterance.pitch = 1.0;
 
       // Activamos el semáforo de que el conserje está hablando
       isSpeakingRef.current = true;
