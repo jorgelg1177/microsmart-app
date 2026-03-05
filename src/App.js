@@ -27,24 +27,24 @@ import {
 } from "lucide-react";
 
 // Implementación de Backoff Exponencial mejorada
-const fetchWithRetry = async (url, options, retries = 5, delay = 1000) => {
+const fetchWithRetry = async (url, options, retries = 3, delay = 1000) => {
   try {
     const res = await fetch(url, options);
     if (!res.ok) {
       const errorData = await res.json().catch(() => null);
-      console.error("Error de API:", res.status, errorData);
-      // Si es un error 400 (Bad Request), no reintentamos porque es un error de formato, fallamos rápido.
+      console.error("Error de API:", res.status, JSON.stringify(errorData));
+      // Fallar rápido en errores de formato
       if (res.status === 400) {
         throw new Error(
-          errorData?.error?.message || "Error de formato en la petición."
+          errorData?.error?.message ||
+            "Error 400: Formato de petición inválido."
         );
       }
       throw new Error(`HTTP error! status: ${res.status}`);
     }
     return await res.json();
   } catch (error) {
-    // Solo reintentamos si no es un error de formato
-    if (retries > 0 && !error.message.includes("Error de formato")) {
+    if (retries > 0 && !error.message.includes("Error 400")) {
       console.warn(`Reintentando petición... Intentos restantes: ${retries}`);
       await new Promise((r) => setTimeout(r, delay));
       return fetchWithRetry(url, options, retries - 1, delay * 2);
@@ -105,6 +105,7 @@ export default function App() {
   const [isListening, setIsListening] = useState(false);
   const [isFluidMode, setIsFluidMode] = useState(false);
 
+  // Historial para mostrar en pantalla (incluye el saludo inicial)
   const [chatHistory, setChatHistory] = useState([
     {
       role: "ai",
@@ -113,15 +114,16 @@ export default function App() {
     },
   ]);
 
+  // Historial estricto para enviar a la API (solo user/model, empezando por user)
+  const [apiHistory, setApiHistory] = useState([]);
+
   const chatEndRef = useRef(null);
   const recognitionRef = useRef(null);
 
   // --- LÓGICA DE VOZ Y SÍNTESIS ---
-
   const speakResponse = (text) => {
     if ("speechSynthesis" in window) {
       window.speechSynthesis.cancel();
-
       const cleanText = text.replace(/\[.*?\]/g, "").trim();
 
       if (!cleanText) return;
@@ -134,7 +136,7 @@ export default function App() {
         if (isFluidMode) {
           setTimeout(() => {
             startVoiceRecognition();
-          }, 500);
+          }, 300);
         }
       };
 
@@ -188,7 +190,7 @@ export default function App() {
     try {
       recognitionRef.current.start();
     } catch (e) {
-      console.warn("Reconocimiento ya iniciado", e);
+      console.warn("Reconocimiento ya iniciado");
     }
   };
 
@@ -290,8 +292,8 @@ export default function App() {
     const textToSend = textOverride || chatInput;
     if (!textToSend.trim() || isTyping) return;
 
-    const newUserMsg = { role: "user", content: textToSend };
-    setChatHistory((prev) => [...prev, newUserMsg]);
+    // Actualizamos visualización
+    setChatHistory((prev) => [...prev, { role: "user", content: textToSend }]);
     setChatInput("");
     setIsTyping(true);
 
@@ -316,16 +318,22 @@ PROTOCOLO:
 - VISITA: Si valida nombre completo y no estás, ofrece recado. Usa exactamente la etiqueta: [MENSAJE_PARA | NombreAutorizado | texto]
 - RECHAZO: Si no coincide nombre, rechaza educadamente. Usa exactamente la etiqueta: [ACCESO_DENEGADO | Motivo]`;
 
-    // SOLUCIÓN: La API de Gemini exige que el historial empiece con 'user'.
-    // Filtramos el mensaje de saludo inicial del conserje para que la petición sea válida y no devuelva error 400.
-    const historyForAPI = chatHistory.filter(
-      (msg, index) => !(index === 0 && msg.role === "ai")
-    );
+    // Preparamos los contenidos estrictamente para la API
+    const newApiMsg = { role: "user", parts: [{ text: textToSend }] };
+    // Aseguramos que el historial enviado a la API siempre termine con un rol 'model' antes de enviar este nuevo 'user'
+    // Para simplificar y evitar errores de alternancia, enviaremos los últimos pares válidos.
 
-    const contents = [...historyForAPI, newUserMsg].map((msg) => ({
-      role: msg.role === "user" ? "user" : "model",
-      parts: [{ text: msg.content }],
-    }));
+    // Validar el historial de API: si el último mensaje fue 'user' (y falló la respuesta), lo reemplazamos o lo descartamos.
+    let validApiHistory = [...apiHistory];
+    if (
+      validApiHistory.length > 0 &&
+      validApiHistory[validApiHistory.length - 1].role === "user"
+    ) {
+      // Falló el intento anterior, reemplazamos el último mensaje del usuario
+      validApiHistory.pop();
+    }
+
+    const contents = [...validApiHistory, newApiMsg];
 
     try {
       const data = await fetchWithRetry(url, {
@@ -339,8 +347,13 @@ PROTOCOLO:
 
       let aiText = data.candidates?.[0]?.content?.parts?.[0]?.text;
 
-      // Manejo de error si Google no devuelve texto válido
-      if (!aiText) throw new Error("No se recibió respuesta de la IA.");
+      if (!aiText) throw new Error("Respuesta vacía de la IA.");
+
+      // Si todo fue bien, actualizamos el historial estricto de la API
+      setApiHistory([
+        ...contents,
+        { role: "model", parts: [{ text: aiText }] },
+      ]);
 
       let actionType = null;
       if (aiText.includes("[ABRIR_PUERTA")) actionType = "opened";
@@ -355,13 +368,22 @@ PROTOCOLO:
 
       speakResponse(finalAiText);
     } catch (error) {
-      console.error("Fetch error capturado:", error);
-      // Mostramos el error directo para que el fallo sea inmediato
+      console.error("Fetch error:", error);
+      // Mensaje de error amigable en pantalla
       setChatHistory((prev) => [
         ...prev,
-        { role: "ai", content: "Error en la conexión. Intenta nuevamente." },
+        {
+          role: "ai",
+          content:
+            "Lo siento, ha habido un problema de red. Por favor, repita.",
+        },
       ]);
-      if (isFluidMode) setIsFluidMode(false);
+      // No añadimos esto al historial de la API para no corromper la secuencia
+
+      if (isFluidMode) {
+        // Dar un pequeño respiro antes de reintentar escuchar si falló
+        setTimeout(startVoiceRecognition, 2000);
+      }
     } finally {
       setIsTyping(false);
     }
@@ -404,7 +426,7 @@ PROTOCOLO:
           </div>
         </div>
 
-        {/* Contenido con Scroll Interno */}
+        {/* Contenido */}
         <div className="flex-1 overflow-y-auto pb-24 px-6 pt-2 scrollbar-hide">
           {activeTab === "home" && (
             <div className="flex flex-col items-center space-y-8 py-8 animate-in fade-in zoom-in duration-500">
@@ -535,7 +557,6 @@ PROTOCOLO:
                 <div ref={chatEndRef} />
               </div>
 
-              {/* Control de Voz Centralizado */}
               <div className="p-4 bg-white border-t border-slate-100">
                 <div className="flex flex-col items-center space-y-4">
                   <button
@@ -566,7 +587,6 @@ PROTOCOLO:
                       : "Toca el micro para despertar al conserje"}
                   </p>
 
-                  {/* Backup para escribir si no quieren hablar */}
                   <div className="w-full relative flex items-center mt-2 opacity-50 focus-within:opacity-100 transition-opacity">
                     <input
                       type="text"
@@ -634,7 +654,6 @@ PROTOCOLO:
             </div>
           )}
 
-          {/* Pestañas de Mensajes y Ajustes */}
           {activeTab === "messages" && (
             <div className="animate-in fade-in slide-in-from-right-4 duration-500 py-4">
               <h2 className="text-xl font-black text-slate-800 mb-6 tracking-tight">
