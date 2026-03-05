@@ -296,8 +296,8 @@ export default function App() {
     setChatInput("");
     setIsTyping(true);
 
-    // IMPORTANTÍSIMO: Necesitas colocar una API Key válida aquí para que funcione
-    const apiKey = "";
+    // API Key configurada
+    const apiKey = "AIzaSyDVE6h1s-PPAWXvYg-t_f9kf6y0YfskQRs";
 
     if (!apiKey) {
       console.error("API Key no configurada.");
