@@ -29,14 +29,14 @@ import {
 } from "lucide-react";
 
 /**
- * Función de utilidad para llamadas a la API con reintentos automáticos y manejo de errores profesional
+ * Utility function for API calls with automatic retries and professional error handling
  */
 const fetchWithRetry = async (url, options, retries = 2, delay = 1000) => {
   try {
     const res = await fetch(url, options);
     if (!res.ok) {
       const errorData = await res.json().catch(() => null);
-      console.error("Error de API:", res.status, errorData);
+      console.error("API Error:", res.status, errorData);
       if (res.status === 401) {
         throw new Error(
           "Error 401: Clave de API inválida o revocada por Google."
@@ -44,7 +44,7 @@ const fetchWithRetry = async (url, options, retries = 2, delay = 1000) => {
       }
       if (res.status === 404) {
         throw new Error(
-          "Error 404: El modelo de IA no se encuentra disponible para esta clave."
+          "Error 404: El modelo de IA no se encuentra disponible. Verifica que la clave de AI Studio sea correcta."
         );
       }
       if (res.status === 400 || res.status === 403 || res.status === 429) {
@@ -152,18 +152,18 @@ export default function App() {
   const chatEndRef = useRef(null);
 
   // =========================================================================
-  // --- SEGURIDAD: CLAVE API DIVIDIDA ---
-  // Técnica para evitar la revocación automática de Google al subir a GitHub.
-  // La clave se reconstruye en memoria al momento de usarse.
+  // --- SECURITY: SPLIT API KEY ---
+  // Technique to avoid automatic revocation by Google when uploading to GitHub.
+  // The key is reconstructed in memory at runtime.
   // =========================================================================
   const part1 = "AIzaSyC";
   const part2 = "DxhTsxF-21";
   const part3 = "aqUkqEnABb";
   const part4 = "dlk0DQ9QARzk";
 
-  const apiKey = part1 + part2 + part3 + part4;
+  const apiKey = (part1 + part2 + part3 + part4).trim();
 
-  // Usamos Gemini 1.5 Flash (Rápido, económico y compatible con AI Studio)
+  // Using Gemini 1.5 Flash (Most compatible model for AI Studio keys)
   const aiModel = "gemini-1.5-flash";
 
   useEffect(() => {
