@@ -38,10 +38,14 @@ const fetchWithRetry = async (url, options, retries = 2, delay = 1000) => {
       const errorData = await res.json().catch(() => null);
       console.error("Error de API:", res.status, errorData);
       if (res.status === 401) {
-        throw new Error("Error 401: Clave de API inválida o revocada.");
+        throw new Error(
+          "Error 401: Clave de API inválida o no configurada en Vercel."
+        );
       }
       if (res.status === 404) {
-        throw new Error("Error 404: El modelo de IA no se encuentra.");
+        throw new Error(
+          "Error 404: El modelo de IA no se encuentra disponible para esta clave."
+        );
       }
       if (res.status === 400 || res.status === 403 || res.status === 429) {
         throw new Error(
@@ -148,17 +152,39 @@ export default function App() {
   const chatEndRef = useRef(null);
 
   // =========================================================================
-  // --- SEGURIDAD: CLAVE API DIRECTA Y DIVIDIDA ---
-  // Hemos cortado la clave que nos diste en 4 partes para que no la bloqueen.
+  // --- SEGURIDAD: LECTURA CORRECTA DE VARIABLE DE ENTORNO EN VITE ---
+  // Vuelve a ser 100% seguro. Leerá la clave directamente desde Vercel.
   // =========================================================================
-  const part1 = "AIzaSyArf";
-  const part2 = "0d11DwbCa";
-  const part3 = "uZ2iK6pFk";
-  const part4 = "KpDPEs0sqI7Y";
+  const getApiKey = () => {
+    let key = "";
+    try {
+      // Vite exige esta sintaxis exacta para reemplazar la variable al compilar.
+      key = import.meta.env.VITE_GEMINI_API_KEY;
+    } catch (e) {
+      // Ignorar error si no estamos en entorno Vite
+    }
 
-  const apiKey = part1 + part2 + part3 + part4;
+    if (!key || key === "undefined" || key === "null") {
+      try {
+        key =
+          process.env.VITE_GEMINI_API_KEY ||
+          process.env.REACT_APP_GEMINI_API_KEY ||
+          "";
+      } catch (e) {}
+    }
 
-  const aiModel = "gemini-pro"; // Cambiado a gemini-pro (modelo universal y más compatible) para evitar el error 404
+    return key &&
+      typeof key === "string" &&
+      key !== "undefined" &&
+      key !== "null"
+      ? key.trim()
+      : "";
+  };
+
+  const apiKey = getApiKey();
+
+  // Usamos el modelo rápido y estable de AI Studio
+  const aiModel = "gemini-1.5-flash";
 
   useEffect(() => {
     authorizedNamesRef.current = authorizedNames;
@@ -173,7 +199,10 @@ export default function App() {
   }, []);
 
   const handleSummarizeActivity = async () => {
-    if (!apiKey) return;
+    if (!apiKey) {
+      setActivitySummary("Error: Clave de API no detectada en el entorno.");
+      return;
+    }
     if (historyLog.length === 0 || isSummarizing) return;
     setIsSummarizing(true);
     const activityData = historyLog
@@ -406,7 +435,8 @@ export default function App() {
         ...prev,
         {
           role: "ai",
-          content: "⚠️ Sistema: No se detecta la clave API. Revisa el código.",
+          content:
+            "⚠️ Sistema: No se detecta la clave API. Por favor, asegúrate de añadir la nueva clave de AI Studio en Vercel y hacer Redeploy.",
         },
       ]);
       setIsTyping(false);
