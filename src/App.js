@@ -40,8 +40,7 @@ const fetchWithRetry = async (url, options, retries = 5, delay = 1000) => {
 
 /**
  * COMPONENTE DEL LOGO:
- * Importante: Renombra tu imagen en la carpeta 'public' a 'logo.png'
- * para evitar errores con los espacios en blanco en la URL publicada.
+ * Asegúrate de que tu imagen en la carpeta 'public' se llame 'logo.png'
  */
 const MicroSmartLogo = ({ className }) => (
   <div className={className}>
@@ -50,12 +49,12 @@ const MicroSmartLogo = ({ className }) => (
       alt="MicroSmart Logo"
       className="h-full w-auto object-contain"
       onError={(e) => {
-        // Respaldo visual si la imagen no carga (por nombre incorrecto o ruta)
+        // Respaldo si la imagen no carga
         e.target.style.display = "none";
         e.target.nextSibling.style.display = "block";
       }}
     />
-    <span className="hidden font-black text-xl tracking-tighter text-slate-800">
+    <span className="hidden font-black text-xl tracking-tighter text-slate-800 uppercase">
       MICRO<span className="text-[#7bc100]">SMART</span>
     </span>
   </div>
