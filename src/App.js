@@ -28,6 +28,9 @@ import {
   FileText,
 } from "lucide-react";
 
+/**
+ * Función de utilidad para llamadas a la API con reintentos automáticos
+ */
 const fetchWithRetry = async (url, options, retries = 2, delay = 1000) => {
   try {
     const res = await fetch(url, options);
@@ -91,8 +94,9 @@ export default function App() {
   const [activeTab, setActiveTab] = useState("home");
   const [doorStatus, setDoorStatus] = useState("idle");
   const [authorizedNames, setAuthorizedNames] = useState([
-    { name: "Jorge", phone: "+34 600 111 222" },
-    { name: "Karla León Núñez", phone: "+34 600 333 444" },
+    { name: "Jorge", phone: "+34 600 000 000" },
+    { name: "Karla León Núñez", phone: "+34 600 000 000" },
+    { name: "Andrés", phone: "+34 600 000 000" },
   ]);
   const [newName, setNewName] = useState("");
   const [newPhone, setNewPhone] = useState("");
@@ -100,10 +104,8 @@ export default function App() {
   const [messagesList, setMessagesList] = useState([]);
   const [chatInput, setChatInput] = useState("");
   const [isTyping, setIsTyping] = useState(false);
-
   const [isListening, setIsListening] = useState(false);
   const [isFluidMode, setIsFluidMode] = useState(false);
-
   const [isSummarizing, setIsSummarizing] = useState(false);
   const [activitySummary, setActivitySummary] = useState("");
   const [draftingId, setDraftingId] = useState(null);
@@ -120,7 +122,7 @@ export default function App() {
     {
       role: "ai",
       content:
-        "Hola, soy el conserje automático de MicroSmart. ¿En qué le puedo ayudar?",
+        "Hola, buenas tardes. Soy el asistente de MicroSmart. ¿Dígame con quién desea hablar, por favor?",
     },
   ]);
   const [apiHistory, setApiHistory] = useState([]);
@@ -128,7 +130,7 @@ export default function App() {
   // =========================================================================
   const apiKey = process.env.REACT_APP_GEMINI_API_KEY;
   const aiModel = "gemini-2.5-flash";
-  const firebaseUrl = process.env.REACT_APP_FIREBASE_URL; // SE LEE DEL .ENV
+  const firebaseUrl = process.env.REACT_APP_FIREBASE_URL;
   // =========================================================================
 
   useEffect(() => {
@@ -142,60 +144,6 @@ export default function App() {
         window.speechSynthesis.getVoices();
     }
   }, []);
-
-  const handleSummarizeActivity = async () => {
-    if (!apiKey) return setActivitySummary("Falta configurar la clave API.");
-    if (historyLog.length === 0)
-      return setActivitySummary(
-        "No hay actividad registrada hoy para resumir."
-      );
-    if (isSummarizing) return;
-    setIsSummarizing(true);
-    const activityData = historyLog
-      .map((log) => `${log.time}: ${log.title} - ${log.desc}`)
-      .join("\n");
-    const prompt = `Resume brevemente la actividad de hoy del portero de forma profesional: ${activityData}`;
-    try {
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/${aiModel}:generateContent?key=${apiKey}`;
-      const response = await fetchWithRetry(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
-      });
-      setActivitySummary(
-        response.candidates?.[0]?.content?.parts?.[0]?.text ||
-          "No hay resumen disponible."
-      );
-    } catch (e) {
-      setActivitySummary("Error: " + e.message);
-    } finally {
-      setIsSummarizing(false);
-    }
-  };
-
-  const handleDraftReply = async (message) => {
-    if (!apiKey) return alert("Falta configurar la clave API.");
-    setDraftingId(message.id);
-    const prompt = `Redacta una respuesta de WhatsApp muy corta y amable para este recado: "${message.content}"`;
-    try {
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/${aiModel}:generateContent?key=${apiKey}`;
-      const response = await fetchWithRetry(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
-      });
-      const draft = response.candidates?.[0]?.content?.parts?.[0]?.text;
-      const whatsappUrl = `https://wa.me/${message.phone.replace(
-        /\D/g,
-        ""
-      )}?text=${encodeURIComponent(draft.trim())}`;
-      window.open(whatsappUrl, "_blank");
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setDraftingId(null);
-    }
-  };
 
   const speakResponse = (text) => {
     if ("speechSynthesis" in window) {
@@ -301,69 +249,16 @@ export default function App() {
     }
   };
 
-  useEffect(() => {
-    document.body.style.overflow = "hidden";
-    document.body.style.position = "fixed";
-    document.body.style.width = "100%";
-    document.body.style.height = "100%";
-    let meta = document.querySelector('meta[name="viewport"]');
-    if (!meta) {
-      meta = document.createElement("meta");
-      meta.name = "viewport";
-      document.head.appendChild(meta);
-    }
-    meta.content =
-      "width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no";
-    const style = document.createElement("style");
-    style.innerHTML = `* { touch-action: pan-y; -webkit-tap-highlight-color: transparent; } input, textarea, select { font-size: 16px !important; } .scrollbar-hide::-webkit-scrollbar { display: none; } .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }`;
-    document.head.appendChild(style);
-    return () => {
-      document.body.style.overflow = "auto";
-      document.body.style.position = "static";
-      document.head.removeChild(style);
-    };
-  }, []);
-
-  useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [chatHistory, isTyping]);
-
-  const handleAddName = () => {
-    if (newName.trim() && newPhone.trim()) {
-      const formattedPhone = newPhone.startsWith("+")
-        ? newPhone.trim()
-        : `+34 ${newPhone.trim()}`;
-      setAuthorizedNames([
-        ...authorizedNames,
-        { name: newName.trim(), phone: formattedPhone },
-      ]);
-      setNewName("");
-      setNewPhone("");
-    }
-  };
-
-  const handleRemoveName = (nameToRemove) => {
-    setAuthorizedNames(
-      authorizedNames.filter((person) => person.name !== nameToRemove)
-    );
-  };
-
-  // --- ORDEN FÍSICA VÍA FIREBASE (NUBE) ---
   const handleOpenDoor = async () => {
     if (doorStatus !== "idle") return;
     setDoorStatus("opening");
-
     try {
-      if (!firebaseUrl)
-        throw new Error("Falta la URL de Firebase en el archivo .env");
-
-      // Enviamos la palabra "ABRIR" a Firebase
+      if (!firebaseUrl) throw new Error("Falta la URL de Firebase");
       await fetch(`${firebaseUrl}/puerta.json`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify("ABRIR"),
       });
-
       setDoorStatus("opened");
       setHistoryLog((prev) => [
         {
@@ -377,10 +272,7 @@ export default function App() {
         ...prev,
       ]);
     } catch (error) {
-      console.error("Error al conectar con la nube:", error);
-      alert(
-        "Error de conexión. Revisa que configuraste bien REACT_APP_FIREBASE_URL."
-      );
+      alert("Error de conexión con la nube.");
     } finally {
       setTimeout(() => setDoorStatus("idle"), 2000);
     }
@@ -389,14 +281,11 @@ export default function App() {
   const handleSimulateVisitor = async (textOverride) => {
     const textToSend = textOverride || chatInput;
     if (!textToSend.trim() || isTyping) return;
-
     if (!apiKey) {
       setChatHistory((prev) => [
         ...prev,
-        { role: "ai", content: "⚠️ Sistema: No se detecta la clave API." },
+        { role: "ai", content: "⚠️ Error: Clave API no configurada." },
       ]);
-      setIsTyping(false);
-      isProcessingRef.current = false;
       return;
     }
 
@@ -412,27 +301,23 @@ export default function App() {
         ? authorizedNamesRef.current.map((p) => p.name).join(", ")
         : "Nadie";
 
-    const systemPrompt = `Eres el CONSERJE VIRTUAL de una vivienda (MicroSmart).
-REGLAS ESTRICTAS:
-1. RÁPIDO PERO EDUCADO: Habla con frases de máximo 10-15 palabras. Ve directo al grano, pero SIEMPRE saluda al iniciar ("Hola") y SIEMPRE despídete al terminar ("Gracias. Hasta luego."). Usa "por favor".
-2. PRIVACIDAD: NUNCA digas apellidos. Si dicen un nombre de pila, pregunta rápido: "¿Me indica el apellido, por favor?".
-3. FLEXIBILIDAD DE APELLIDOS: Para verificar a un propietario, basta con que diga el NOMBRE CORRECTO y AL MENOS UN APELLIDO CORRECTO de la lista. 
-4. REGLA DE PACIENCIA: Si fallan el nombre/apellido, di rápido: "Aquí no reside nadie con ese nombre". ¡ESPERA SU RESPUESTA! No cortes la comunicación de golpe.
-5. FRASE PARA PAQUETES: Si verificas empresa y destinatario válido, di EXACTAMENTE: "Puede pasar. Deje el paquete dentro y cierre. Gracias. Hasta luego."
-6. RECHAZO: Si vas a denegar el paso definitivamente, hazlo amablemente.
+    const systemPrompt = `Eres el CONSERJE INTELIGENTE de la vivienda MicroSmart. Tu objetivo es gestionar las visitas con RAZONAMIENTO LÓGICO, SEGURIDAD y AMABILIDAD EXTREMA.
 
-LISTA DE PROPIETARIOS AUTORIZADOS: [${allowedNamesList}].
+INSTRUCCIONES DE COMPORTAMIENTO:
+1. ANÁLISIS DE INTENCIÓN: Escucha bien al visitante. ¿Viene a entregar algo? ¿Es un amigo? ¿Viene por un servicio técnico? Actúa según el contexto.
+2. AMABILIDAD Y MODALES: Saluda siempre ("Hola", "Buenas tardes"), usa "por favor", "sería tan amable" y despídete calurosamente ("Que tenga un buen día", "Gracias por su visita").
+3. FLEXIBILIDAD COGNITIVA: Si el visitante se equivoca ligeramente (ej. dice "Carla León" pero el registro es "Karla León Núñez"), utiliza la lógica para entender que es ella. No seas un robot rígido. Si no estás seguro, pide el apellido de forma educada: "Disculpe, ¿me podría indicar el segundo apellido para confirmar?".
+4. SEGURIDAD PROACTIVA: NUNCA reveles quién vive en la casa ni si están dentro. Si preguntan "¿Está Jorge?", responde: "Para poder anunciarle, ¿me indica su nombre y el motivo de su visita, por favor?".
+5. PROTOCOLO DE REPARTIDORES: Si es un repartidor y confirma el destinatario correcto, sé ejecutivo: "Entendido, puede pasar. Por favor, deje el paquete dentro y asegúrese de cerrar bien la puerta al salir. ¡Muchas gracias!".
+6. OFRECER RECADOS: Si la persona no está autorizada o el residente no puede atender, ofrece de forma proactiva guardar un mensaje: "Lo siento, en este momento no pueden atenderle. Si gusta, puede dejarme un recado y yo se lo haré llegar de inmediato".
 
-ETIQUETAS SECRETAS:
-A. REPARTIDOR VERIFICADO: [ABRIR_PUERTA | Empresa | Destinatario]
-B. VISITA VERIFICADA: [MENSAJE_PARA | NombreAutorizado | texto]
-C. RECHAZO DEFINITIVO: [ACCESO_DENEGADO | Motivo]
+LISTA DE RESIDENTES: [${allowedNamesList}].
 
-¡REGLA DE COLGAR! [FIN_CONVERSACION] ÚNICAMENTE cuando:
-- Ya has dado permiso (repartidor).
-- Ya has guardado el recado.
-- El visitante se despide.
-- Insiste 3 veces fallidas.`;
+ETIQUETAS PARA EL SISTEMA (Añade una al final de tu respuesta):
+- [ABRIR_PUERTA | Empresa/Motivo | Destinatario] -> Solo si el destinatario es correcto.
+- [MENSAJE_PARA | NombreResidente | Texto del recado] -> Si deciden dejar un mensaje.
+- [ACCESO_DENEGADO | Motivo] -> Si el comportamiento es sospechoso o erróneo tras varios intentos.
+- [FIN_CONVERSACION] -> Añádela solo cuando te despidas definitivamente tras completar una acción o rechazo.`;
 
     let validApiHistory = [...apiHistoryRef.current];
     let combinedText = textToSend;
@@ -453,11 +338,11 @@ C. RECHAZO DEFINITIVO: [ACCESO_DENEGADO | Motivo]
         body: JSON.stringify({
           systemInstruction: { parts: [{ text: systemPrompt }] },
           contents: contents,
-          generationConfig: { temperature: 0.2 },
+          generationConfig: { temperature: 0.4 },
         }),
       });
       let aiText = data.candidates?.[0]?.content?.parts?.[0]?.text;
-      if (!aiText) throw new Error("Respuesta vacía del servidor.");
+      if (!aiText) throw new Error("Sin respuesta.");
 
       const updatedHistory = [
         ...contents,
@@ -475,25 +360,18 @@ C. RECHAZO DEFINITIVO: [ACCESO_DENEGADO | Motivo]
       );
       if (abrirMatch) {
         actionType = "opened";
-        const empresa = abrirMatch[1].trim();
-        const destinatario = abrirMatch[2].trim();
-
-        // --- LA IA MANDA LA ORDEN A FIREBASE ---
-        if (firebaseUrl) {
+        if (firebaseUrl)
           fetch(`${firebaseUrl}/puerta.json`, {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify("ABRIR"),
-          }).catch((e) => console.error("Error en nube:", e));
-        }
-        // --------------------------------------
-
+          });
         setHistoryLog((prev) => [
           {
             id: Date.now(),
             type: "ai_open",
-            title: `Paquete: ${empresa}`,
-            desc: `Destinatario: ${destinatario}`,
+            title: `Paquete: ${abrirMatch[1]}`,
+            desc: `Para: ${abrirMatch[2]}`,
             time: getCurrentTime(),
             date: "Hoy",
           },
@@ -506,20 +384,17 @@ C. RECHAZO DEFINITIVO: [ACCESO_DENEGADO | Motivo]
       );
       if (mensajeMatch) {
         actionType = "message_saved";
-        const destinatario = mensajeMatch[1].trim();
-        const textoMensaje = mensajeMatch[2].trim();
+        const dest = mensajeMatch[1].trim();
         setMessagesList((prev) => [
           {
             id: Date.now(),
-            recipient: destinatario,
-            content: textoMensaje,
+            recipient: dest,
+            content: mensajeMatch[2].trim(),
             time: getCurrentTime(),
             phone:
-              authorizedNamesRef.current.find(
-                (p) =>
-                  p.name === destinatario ||
-                  p.name.includes(destinatario.split(" ")[0])
-              )?.phone || "Desconocido",
+              authorizedNamesRef.current.find((p) =>
+                p.name.includes(dest.split(" ")[0])
+              )?.phone || "",
           },
           ...prev,
         ]);
@@ -528,24 +403,7 @@ C. RECHAZO DEFINITIVO: [ACCESO_DENEGADO | Motivo]
             id: Date.now() + 1,
             type: "ai_message",
             title: `Recado guardado`,
-            desc: `Para: ${destinatario}`,
-            time: getCurrentTime(),
-            date: "Hoy",
-          },
-          ...prev,
-        ]);
-      }
-
-      const rechazoMatch = aiText.match(/\[ACCESO_DENEGADO\s*\|\s*(.*?)\]/);
-      if (rechazoMatch) {
-        actionType = "denied";
-        const motivo = rechazoMatch[1].trim();
-        setHistoryLog((prev) => [
-          {
-            id: Date.now(),
-            type: "ai_denied",
-            title: `Acceso Denegado`,
-            desc: motivo,
+            desc: `Para: ${dest}`,
             time: getCurrentTime(),
             date: "Hoy",
           },
@@ -554,12 +412,10 @@ C. RECHAZO DEFINITIVO: [ACCESO_DENEGADO | Motivo]
       }
 
       if (aiText.includes("[FIN_CONVERSACION]")) endConversation = true;
-
       setChatHistory((prev) => [
         ...prev,
         { role: "ai", content: finalAiText, action: actionType },
       ]);
-
       isProcessingRef.current = false;
       if (endConversation) {
         isFluidModeRef.current = false;
@@ -569,7 +425,7 @@ C. RECHAZO DEFINITIVO: [ACCESO_DENEGADO | Motivo]
     } catch (error) {
       setChatHistory((prev) => [
         ...prev,
-        { role: "ai", content: `⚠️ Error: ${error.message}` },
+        { role: "ai", content: `⚠️ Error de conexión.` },
       ]);
       isProcessingRef.current = false;
       if (isFluidModeRef.current) setTimeout(startListening, 1500);
@@ -600,7 +456,7 @@ C. RECHAZO DEFINITIVO: [ACCESO_DENEGADO | Motivo]
             </div>
             <div className="overflow-hidden">
               <h1 className="text-base font-bold text-slate-800 leading-tight truncate">
-                Hola, {authorizedNames[0]?.name?.split(" ")[0] || "Propietario"}
+                Hola, {authorizedNames[0]?.name}
               </h1>
               <p className="text-[10px] text-slate-500 font-medium flex items-center">
                 <MapPin size={10} className="mr-1 text-[#7bc100]" />{" "}
@@ -662,10 +518,10 @@ C. RECHAZO DEFINITIVO: [ACCESO_DENEGADO | Motivo]
                 <div>
                   <h2 className="text-lg font-black text-slate-800 flex items-center">
                     <Sparkles size={18} className="mr-2 text-[#00479b]" />{" "}
-                    Conserje IA
+                    Conserje Pro
                   </h2>
                   <p className="text-[9px] font-bold text-slate-400 mt-1 uppercase tracking-widest">
-                    Conversación Fluida
+                    Conversación Inteligente
                   </p>
                 </div>
                 <div
@@ -675,7 +531,7 @@ C. RECHAZO DEFINITIVO: [ACCESO_DENEGADO | Motivo]
                       : "bg-slate-100 text-slate-500"
                   } text-[8px] font-black rounded-full`}
                 >
-                  {isFluidMode ? "CONSERJE DESPIERTO" : "MODO DORMIDO"}
+                  {isFluidMode ? "MODO ACTIVO" : "MODO DORMIDO"}
                 </div>
               </div>
               <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
@@ -739,242 +595,110 @@ C. RECHAZO DEFINITIVO: [ACCESO_DENEGADO | Motivo]
                   <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">
                     {isFluidMode
                       ? isListening
-                        ? "Escuchando..."
-                        : "Pensando..."
-                      : "Toca el micro para despertar"}
+                        ? "Le escucho..."
+                        : "Analizando..."
+                      : "Toque para hablar"}
                   </p>
                 </div>
               </div>
             </div>
           )}
           {activeTab === "history" && (
-            <div className="animate-in fade-in slide-in-from-right-4 duration-500 py-4">
-              <div className="flex justify-between items-center mb-6">
-                <h2 className="text-xl font-black text-slate-800 tracking-tight">
-                  Registro
-                </h2>
-                <button
-                  onClick={handleSummarizeActivity}
-                  disabled={isSummarizing || historyLog.length === 0}
-                  className={`flex items-center space-x-1 px-3 py-1.5 rounded-full text-[10px] font-bold shadow-lg transition-all ${
-                    historyLog.length === 0
-                      ? "bg-slate-200 text-slate-400 shadow-none"
-                      : "bg-[#00479b] text-white shadow-blue-900/20 active:scale-95"
-                  }`}
+            <div className="py-4 space-y-3">
+              <h2 className="text-xl font-black text-slate-800 mb-6">
+                Registro
+              </h2>
+              {historyLog.map((log) => (
+                <div
+                  key={log.id}
+                  className="bg-white p-4 rounded-3xl shadow-sm border border-slate-100 flex items-center space-x-3"
                 >
-                  {isSummarizing ? (
-                    <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                  ) : (
-                    <Sparkles size={12} />
-                  )}
-                  <span>✨ RESUMIR</span>
-                </button>
-              </div>
-              {activitySummary && (
-                <div className="mb-6 bg-blue-50 p-4 rounded-3xl border border-blue-100 animate-in slide-in-from-top-2">
-                  <h4 className="text-[10px] font-black text-[#00479b] mb-1 uppercase tracking-widest flex items-center">
-                    <FileText size={12} className="mr-1" /> Resumen IA
-                  </h4>
-                  <p className="text-xs text-slate-700 leading-relaxed font-medium">
-                    {activitySummary}
-                  </p>
-                  <button
-                    onClick={() => setActivitySummary("")}
-                    className="mt-2 text-[9px] font-bold text-slate-400 hover:text-slate-600 underline"
+                  <div
+                    className={`p-2.5 rounded-xl ${
+                      log.type === "ai_open"
+                        ? "bg-green-100 text-[#7bc100]"
+                        : log.type === "ai_message"
+                        ? "bg-amber-100 text-amber-500"
+                        : "bg-blue-100 text-[#00479b]"
+                    }`}
                   >
-                    Cerrar resumen
-                  </button>
-                </div>
-              )}
-              <div className="space-y-3">
-                {historyLog.length === 0 ? (
-                  <div className="text-center py-10">
-                    <p className="text-slate-400 font-bold text-xs">
-                      Aún no hay actividad hoy
-                    </p>
+                    {log.type === "ai_open" ? (
+                      <Package size={18} />
+                    ) : log.type === "ai_message" ? (
+                      <MessageSquare size={18} />
+                    ) : (
+                      <User size={18} />
+                    )}
                   </div>
-                ) : (
-                  historyLog.map((log) => (
-                    <div
-                      key={log.id}
-                      className="bg-white p-4 rounded-3xl shadow-sm border border-slate-100 flex items-center space-x-3"
-                    >
-                      <div
-                        className={`p-2.5 rounded-xl ${
-                          log.type === "ai_open"
-                            ? "bg-green-100 text-[#7bc100]"
-                            : log.type === "ai_denied"
-                            ? "bg-red-100 text-red-500"
-                            : log.type === "ai_message"
-                            ? "bg-amber-100 text-amber-500"
-                            : "bg-blue-100 text-[#00479b]"
-                        }`}
-                      >
-                        {log.type === "ai_open" ? (
-                          <Package size={18} />
-                        ) : log.type === "ai_denied" ? (
-                          <ShieldAlert size={18} />
-                        ) : log.type === "ai_message" ? (
-                          <MessageSquare size={18} />
-                        ) : (
-                          <User size={18} />
-                        )}
-                      </div>
-                      <div className="flex-1">
-                        <h4 className="font-bold text-slate-800 text-xs mb-1">
-                          {log.title}
-                        </h4>
-                        <p className="text-[10px] text-slate-500 truncate">
-                          {log.desc}
-                        </p>
-                      </div>
-                      <div className="text-right shrink-0">
-                        <span className="text-[10px] font-black text-slate-700 block">
-                          {log.time}
-                        </span>
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
+                  <div className="flex-1">
+                    <h4 className="font-bold text-slate-800 text-xs">
+                      {log.title}
+                    </h4>
+                    <p className="text-[10px] text-slate-500">{log.desc}</p>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-[10px] font-black text-slate-700">
+                      {log.time}
+                    </span>
+                  </div>
+                </div>
+              ))}
             </div>
           )}
           {activeTab === "messages" && (
-            <div className="animate-in fade-in slide-in-from-right-4 duration-500 py-4">
-              <h2 className="text-xl font-black text-slate-800 mb-6 tracking-tight">
-                Recados
-              </h2>
-              <div className="space-y-4">
-                {messagesList.length === 0 ? (
-                  <div className="text-center py-16 bg-slate-50 rounded-[2.5rem] border-2 border-dashed border-slate-200">
-                    <MessageSquare
-                      size={40}
-                      className="text-slate-300 mx-auto mb-3"
-                    />
-                    <p className="text-slate-400 font-bold text-xs">
-                      Sin mensajes pendientes
-                    </p>
-                  </div>
-                ) : (
-                  messagesList.map((msg) => (
-                    <div
-                      key={msg.id}
-                      className="bg-white p-5 rounded-3xl shadow-md border-l-4 border-l-[#7bc100]"
-                    >
-                      <div className="flex justify-between items-start mb-2">
-                        <div>
-                          <span className="text-[8px] font-black text-[#00479b] tracking-tighter uppercase">
-                            PARA
-                          </span>
-                          <h4 className="font-black text-slate-800 text-sm">
-                            {msg.recipient}
-                          </h4>
-                        </div>
-                        <span className="text-[9px] font-bold text-slate-400">
-                          {msg.time}
-                        </span>
-                      </div>
-                      <p className="text-xs text-slate-600 mb-4 font-medium italic">
-                        "{msg.content}"
-                      </p>
-                      <div className="flex space-x-2">
-                        <button
-                          onClick={() => handleDraftReply(msg)}
-                          disabled={draftingId === msg.id}
-                          className="flex-1 flex items-center justify-center bg-slate-800 text-white py-2.5 rounded-xl text-[10px] font-black transition-all shadow-lg active:scale-95"
-                        >
-                          {draftingId === msg.id ? (
-                            <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                          ) : (
-                            <Wand2 size={14} className="mr-2" />
-                          )}
-                          ✨ REDACTAR
-                        </button>
-                        <a
-                          href={`https://wa.me/${msg.phone.replace(
-                            /\D/g,
-                            ""
-                          )}?text=${encodeURIComponent(
-                            `Hola ${msg.recipient}, el Conserje MicroSmart tomó este recado para ti:\n\n"${msg.content}"`
-                          )}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="p-2.5 bg-[#25d366] text-white rounded-xl shadow-lg active:scale-95"
-                        >
-                          <PhoneForwarded size={16} />
-                        </a>
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
-          )}
-          {activeTab === "settings" && (
-            <div className="animate-in fade-in slide-in-from-right-4 duration-500 space-y-5 py-4">
-              <h2 className="text-xl font-black text-slate-800 mb-6 tracking-tight">
-                Configuración
-              </h2>
-              <div className="bg-white rounded-3xl p-5 shadow-sm border border-slate-100">
-                <div className="flex items-center space-x-3 mb-4">
-                  <UserPlus size={18} className="text-[#00479b]" />
-                  <h3 className="font-bold text-slate-800 text-sm">
-                    Personas Autorizadas
-                  </h3>
-                </div>
-                <div className="space-y-2 mb-4">
-                  {authorizedNames.map((person, index) => (
-                    <div
-                      key={index}
-                      className="flex justify-between items-center bg-slate-50 p-2.5 rounded-xl border border-slate-100"
-                    >
-                      <div className="overflow-hidden">
-                        <span className="text-xs font-bold text-slate-700 block truncate">
-                          {person.name}
-                        </span>
-                        <span className="text-[9px] text-slate-400 font-bold">
-                          {person.phone}
-                        </span>
-                      </div>
-                      <button
-                        onClick={() => handleRemoveName(person.name)}
-                        className="text-red-400 p-2 hover:bg-red-50 rounded-lg"
-                      >
-                        <X size={16} />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-                <div className="space-y-2">
-                  <input
-                    type="text"
-                    value={newName}
-                    onChange={(e) => setNewName(e.target.value)}
-                    placeholder="Nombre completo"
-                    className="w-full bg-slate-50 border border-slate-200 text-base text-slate-800 rounded-lg px-3 py-2.5 focus:outline-none"
-                  />
-                  <div className="flex space-x-2">
-                    <div className="flex-1 bg-slate-50 border border-slate-200 rounded-lg flex items-center px-3">
-                      <span className="text-slate-400 text-sm font-bold pr-2 mr-2 border-r border-slate-200">
-                        +34
+            <div className="py-4 space-y-4">
+              <h2 className="text-xl font-black text-slate-800">Recados</h2>
+              {messagesList.map((msg) => (
+                <div
+                  key={msg.id}
+                  className="bg-white p-5 rounded-3xl shadow-md border-l-4 border-l-[#7bc100]"
+                >
+                  <div className="flex justify-between items-start mb-2">
+                    <div>
+                      <span className="text-[8px] font-black text-[#00479b] tracking-tighter uppercase">
+                        PARA
                       </span>
-                      <input
-                        type="tel"
-                        value={newPhone}
-                        onChange={(e) => setNewPhone(e.target.value)}
-                        placeholder="Teléfono"
-                        className="bg-transparent text-base text-slate-800 w-full py-2.5 focus:outline-none"
-                      />
+                      <h4 className="font-black text-slate-800 text-sm">
+                        {msg.recipient}
+                      </h4>
                     </div>
+                    <span className="text-[9px] font-bold text-slate-400">
+                      {msg.time}
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-600 mb-4 italic">
+                    "{msg.content}"
+                  </p>
+                  <div className="flex space-x-2">
                     <button
-                      onClick={handleAddName}
-                      className="bg-[#00479b] text-white px-4 rounded-lg text-xs font-bold shadow-lg shadow-blue-900/20 active:scale-95 transition-all"
+                      onClick={() => handleDraftReply(msg)}
+                      disabled={draftingId === msg.id}
+                      className="flex-1 flex items-center justify-center bg-slate-800 text-white py-2.5 rounded-xl text-[10px] font-black transition-all shadow-lg active:scale-95"
                     >
-                      OK
+                      {draftingId === msg.id ? (
+                        "REDACTANDO..."
+                      ) : (
+                        <>
+                          <Wand2 size={14} className="mr-2" /> REDACTAR
+                        </>
+                      )}
                     </button>
+                    <a
+                      href={`https://wa.me/${msg.phone.replace(
+                        /\D/g,
+                        ""
+                      )}?text=${encodeURIComponent(
+                        `Hola ${msg.recipient}, tienes un recado en MicroSmart: "${msg.content}"`
+                      )}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="p-2.5 bg-[#25d366] text-white rounded-xl shadow-lg active:scale-95"
+                    >
+                      <PhoneForwarded size={16} />
+                    </a>
                   </div>
                 </div>
-              </div>
+              ))}
             </div>
           )}
         </div>
