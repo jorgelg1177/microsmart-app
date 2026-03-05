@@ -122,11 +122,15 @@ export default function App() {
   const [activitySummary, setActivitySummary] = useState("");
   const [draftingId, setDraftingId] = useState(null);
 
-  // Referencias para el Bucle de Voz
+  // Referencias para el Bucle de Voz y Memoria
   const isFluidModeRef = useRef(false);
   const isProcessingRef = useRef(false);
   const isSpeakingRef = useRef(false);
   const recognitionRef = useRef(null);
+
+  // SOLUCIÓN AL BUG DE AMNESIA: Estas referencias mantienen el estado fresco para los eventos de voz
+  const apiHistoryRef = useRef([]);
+  const authorizedNamesRef = useRef(authorizedNames);
 
   const [chatHistory, setChatHistory] = useState([
     {
@@ -140,6 +144,11 @@ export default function App() {
 
   // Tu API KEY de Google Gemini
   const apiKey = "AIzaSyCqet9BiQZIODJhJRAV6NKFxqndizj3s7s";
+
+  // Sincronizar referencias
+  useEffect(() => {
+    authorizedNamesRef.current = authorizedNames;
+  }, [authorizedNames]);
 
   // Precargar las voces del sistema
   useEffect(() => {
@@ -389,35 +398,37 @@ export default function App() {
     setIsTyping(true);
 
     const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
+
+    // Leemos de la referencia para no sufrir de "Stale Closures"
     const allowedNamesList =
-      authorizedNames.length > 0
-        ? authorizedNames.map((p) => p.name).join(", ")
+      authorizedNamesRef.current.length > 0
+        ? authorizedNamesRef.current.map((p) => p.name).join(", ")
         : "Nadie";
 
-    const systemPrompt = `Eres el CONSERJE VIRTUAL INTELIGENTE de una VIVIENDA de alta seguridad (MicroSmart). NUNCA asumas el rol de un propietario, eres exclusivamente el conserje.
+    const systemPrompt = `Eres el CONSERJE VIRTUAL INTELIGENTE de una VIVIENDA de alta seguridad (MicroSmart). Eres exclusivamente el conserje.
 
-REGLAS DE SEGURIDAD DE HIERRO (CUMPLE AL 100%):
+REGLAS DE SEGURIDAD (CUMPLE AL 100%):
 1. ES UNA VIVIENDA, NO UN EDIFICIO: Habla siempre refiriéndote a "esta vivienda".
-2. PRIVACIDAD ABSOLUTA: NUNCA reveles, completes ni sugieras el nombre o apellido de los propietarios. Si te dicen "Busco a Carlos" o "Traigo un paquete para Carlos", NUNCA digas "¿Para Carlos García?". Debes preguntar: "¿Me podría indicar el apellido exacto de la persona, por favor?".
-3. REGLA DE PRESENCIA: NUNCA digas que no hay nadie en casa, ni ofrezcas dejar recados, HASTA QUE el visitante haya dicho el NOMBRE Y APELLIDO EXACTO y coincida con la lista. Si no coincide, dile amablemente que se ha equivocado de vivienda y deniega el acceso.
-4. INSTRUCCIÓN EXACTA PARA PAQUETES: Si es un repartidor y ya te dio la empresa y el nombre+apellido exacto que coincide con la lista, DEBES decirle esta frase obligatoria antes de abrir: "Por favor, entre y ponga el paquete en un lugar seguro y cierre la puerta al salir, por favor y gracias."
-5. NO REPITAS SALUDOS: Ya saludaste al inicio. No vuelvas a decir Hola o Buenos días en el medio de la charla.
-6. MEMORIA INTELIGENTE: No vuelvas a preguntar datos que el usuario ya te dijo (como la empresa de reparto o a quién busca).
+2. AMABILIDAD Y CORTESÍA: Sé siempre muy amable, pero firme con la seguridad.
+3. PRIVACIDAD ABSOLUTA (¡CRÍTICO!): NUNCA reveles, completes ni sugieras el nombre o apellido de los propietarios. Si el visitante dice "Busco a Carlos" o "Traigo un paquete para Carlos", NUNCA le digas "¿Para Carlos García?". Debes preguntar: "¿Me podría indicar el apellido exacto de la persona a la que busca, por favor?".
+4. REGLA DEL SILENCIO SOBRE LA CASA: NUNCA digas que "no hay nadie en casa" ni ofrezcas dejar recados HASTA QUE el visitante haya dicho el NOMBRE Y APELLIDO EXACTOS y estos coincidan con la lista. Si dicen un nombre incorrecto o incompleto, simplemente di que se han equivocado de vivienda o insiste en pedir el nombre completo.
+5. FRASE EXACTA PARA PAQUETES: Si es un repartidor y ya verificaste que la empresa y el destinatario (nombre y apellido) son correctos, tu respuesta DEBE INCLUIR ESTA FRASE EXACTA antes de abrir: "Por favor, entre y ponga el paquete en un lugar seguro y cierre la puerta al salir, por favor y gracias."
+6. NO REPITAS SALUDOS: Ya saludaste al inicio. No vuelvas a decir Hola o Buenos días.
+7. MEMORIA PERFECTA: Recuerda toda la conversación. Si ya te dijeron de qué empresa vienen o a quién buscan, NO LO VUELVAS A PREGUNTAR.
 
 LISTA DE PROPIETARIOS AUTORIZADOS: [${allowedNamesList}].
 
 PROTOCOLO Y ETIQUETAS SECRETAS (Usa solo una al final de la gestión):
-A. REPARTIDORES VERIFICADOS (Nombre+Apellido exactos en la lista + Empresa): Usa al final: [ABRIR_PUERTA | Empresa | Destinatario]
+A. REPARTIDORES VERIFICADOS (Nombre+Apellido exactos + Empresa): Autoriza el paso con la frase exacta de la Regla 5. Usa al final: [ABRIR_PUERTA | Empresa | Destinatario]
 B. VISITAS VERIFICADAS (Nombre+Apellido exactos en la lista): Diles que no pueden atenderle en este momento y ofrece dejar un recado. Usa al final: [MENSAJE_PARA | NombreAutorizado | texto]
-C. DATOS INCORRECTOS / DESCONOCIDOS / COMERCIALES: Rechaza el paso amablemente. Usa al final: [ACCESO_DENEGADO | Motivo]
+C. DATOS INCORRECTOS / DESCONOCIDOS / COMERCIALES: Rechaza el paso amablemente indicando que no reside ahí. Usa al final: [ACCESO_DENEGADO | Motivo]
 
-IMPORTANTE: Solo añade [FIN_CONVERSACION] al final de tu mensaje cuando la gestión esté completamente terminada (ya autorizaste paso, tomaste recado o denegaste acceso). Si necesitas preguntar un apellido o la empresa, NO uses esta etiqueta para que la conversación siga abierta.`;
+IMPORTANTE: Solo añade [FIN_CONVERSACION] al final de tu mensaje cuando la gestión esté completamente terminada (ya autorizaste paso, tomaste recado o denegaste acceso). Si necesitas preguntar un apellido o la empresa, NO uses esta etiqueta para mantener el micrófono abierto.`;
 
-    let validApiHistory = [...apiHistory];
+    // USAMOS LA REFERENCIA GLOBAL DEL HISTORIAL (Solución a la "Amnesia")
+    let validApiHistory = [...apiHistoryRef.current];
     let combinedText = textToSend;
 
-    // CORRECCIÓN VITAL: Si el usuario habló dos veces seguidas o la API falló,
-    // combinamos sus mensajes en lugar de borrar el primero, así la IA NO PIERDE CONTEXTO.
     if (
       validApiHistory.length > 0 &&
       validApiHistory[validApiHistory.length - 1].role === "user"
@@ -436,17 +447,19 @@ IMPORTANTE: Solo añade [FIN_CONVERSACION] al final de tu mensaje cuando la gest
         body: JSON.stringify({
           systemInstruction: { parts: [{ text: systemPrompt }] },
           contents: contents,
-          generationConfig: { temperature: 0.3 }, // Temperatura baja para que sea más lógico y menos creativo/errático
+          generationConfig: { temperature: 0.3 },
         }),
       });
 
       let aiText = data.candidates?.[0]?.content?.parts?.[0]?.text;
       if (!aiText) throw new Error("Respuesta vacía.");
 
-      setApiHistory([
+      const updatedHistory = [
         ...contents,
         { role: "model", parts: [{ text: aiText }] },
-      ]);
+      ];
+      setApiHistory(updatedHistory);
+      apiHistoryRef.current = updatedHistory; // Guardar en la referencia inmune a closures
 
       let actionType = null,
         endConversation = false;
