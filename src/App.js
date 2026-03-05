@@ -30,10 +30,16 @@ import {
 const fetchWithRetry = async (url, options, retries = 5, delay = 1000) => {
   try {
     const res = await fetch(url, options);
-    if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+    if (!res.ok) {
+      // Obtenemos más detalles del error si es posible
+      const errorData = await res.json().catch(() => null);
+      console.error("Error de API:", res.status, errorData);
+      throw new Error(`HTTP error! status: ${res.status}`);
+    }
     return await res.json();
   } catch (error) {
     if (retries > 0) {
+      console.warn(`Reintentando petición... Intentos restantes: ${retries}`);
       await new Promise((r) => setTimeout(r, delay));
       return fetchWithRetry(url, options, retries - 1, delay * 2);
     }
@@ -112,6 +118,9 @@ export default function App() {
       window.speechSynthesis.cancel();
 
       const cleanText = text.replace(/\[.*?\]/g, "").trim();
+
+      if (!cleanText) return; // No hablar si no hay texto
+
       const utterance = new SpeechSynthesisUtterance(cleanText);
       utterance.lang = "es-ES";
       utterance.rate = 1.0;
@@ -125,6 +134,13 @@ export default function App() {
         }
       };
 
+      utterance.onerror = (e) => {
+        console.error("Error en síntesis de voz:", e);
+        if (isFluidMode) {
+          setTimeout(startVoiceRecognition, 1000);
+        }
+      };
+
       window.speechSynthesis.speak(utterance);
     }
   };
@@ -132,7 +148,11 @@ export default function App() {
   const startVoiceRecognition = () => {
     const SpeechRecognition =
       window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SpeechRecognition) return;
+    if (!SpeechRecognition) {
+      alert("El reconocimiento de voz no está soportado en este navegador.");
+      setIsFluidMode(false);
+      return;
+    }
 
     if (!recognitionRef.current) {
       recognitionRef.current = new SpeechRecognition();
@@ -146,21 +166,28 @@ export default function App() {
       recognitionRef.current.onresult = (event) => {
         const transcript = event.results[0][0].transcript;
         if (transcript.trim()) {
+          // Detenemos explícitamente para asegurar que no haya solapamientos
+          recognitionRef.current.stop();
           handleSimulateVisitor(transcript);
         }
       };
 
-      recognitionRef.current.onerror = () => {
+      recognitionRef.current.onerror = (event) => {
+        console.error("Error de reconocimiento de voz:", event.error);
         setIsListening(false);
-        // Si hay error (como silencio), reintentamos si sigue el modo fluido
-        if (isFluidMode) setTimeout(startVoiceRecognition, 1000);
+        // Si hay error (como silencio - 'no-speech'), reintentamos si sigue el modo fluido
+        if (isFluidMode && event.error === "no-speech") {
+          setTimeout(startVoiceRecognition, 1000);
+        } else if (isFluidMode && event.error !== "aborted") {
+          setIsFluidMode(false); // Apagar si es un error diferente
+        }
       };
     }
 
     try {
       recognitionRef.current.start();
     } catch (e) {
-      // Ya estaba corriendo
+      console.warn("Reconocimiento ya iniciado", e);
     }
   };
 
@@ -269,7 +296,23 @@ export default function App() {
     setChatInput("");
     setIsTyping(true);
 
+    // IMPORTANTÍSIMO: Necesitas colocar una API Key válida aquí para que funcione
     const apiKey = "";
+
+    if (!apiKey) {
+      console.error("API Key no configurada.");
+      setChatHistory((prev) => [
+        ...prev,
+        {
+          role: "ai",
+          content: "Error: Falta configurar la clave API del asistente.",
+        },
+      ]);
+      setIsTyping(false);
+      if (isFluidMode) setIsFluidMode(false);
+      return;
+    }
+
     const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
     const allowedNamesList =
       authorizedNames.length > 0
@@ -286,10 +329,11 @@ REGLAS DE SEGURIDAD:
 PERSONAS AUTORIZADAS: [${allowedNamesList}].
 
 PROTOCOLO:
-- REPARTIDOR: Debe decir EMPRESA y DESTINATARIO. Si es correcto, abre. [ABRIR_PUERTA | Empresa | Destinatario]
-- VISITA: Si valida nombre completo y no estás, ofrece recado. [MENSAJE_PARA | NombreAutorizado | texto]
-- RECHAZO: Si no coincide nombre, rechaza educadamente. [ACCESO_DENEGADO | Motivo]`;
+- REPARTIDOR: Debe decir EMPRESA y DESTINATARIO. Si es correcto, abre. Usa exactamente la etiqueta: [ABRIR_PUERTA | Empresa | Destinatario]
+- VISITA: Si valida nombre completo y no estás, ofrece recado. Usa exactamente la etiqueta: [MENSAJE_PARA | NombreAutorizado | texto]
+- RECHAZO: Si no coincide nombre, rechaza educadamente. Usa exactamente la etiqueta: [ACCESO_DENEGADO | Motivo]`;
 
+    // Filtramos el historial para asegurarnos de que el formato sea el correcto para Gemini
     const contents = [
       ...chatHistory.filter((m) => m.role !== "system"),
       newUserMsg,
@@ -299,6 +343,7 @@ PROTOCOLO:
     }));
 
     try {
+      console.log("Enviando petición a Gemini...");
       const data = await fetchWithRetry(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -308,6 +353,7 @@ PROTOCOLO:
         }),
       });
 
+      console.log("Respuesta recibida:", data);
       let aiText =
         data.candidates?.[0]?.content?.parts?.[0]?.text ||
         "No entiendo, ¿puede repetir?";
@@ -326,10 +372,16 @@ PROTOCOLO:
       // HABLAR RESPUESTA
       speakResponse(finalAiText);
     } catch (error) {
+      console.error("Fetch error capturado:", error);
       setChatHistory((prev) => [
         ...prev,
-        { role: "ai", content: "Error de conexión." },
+        {
+          role: "ai",
+          content:
+            "Lo siento, ha ocurrido un error de conexión con el servidor.",
+        },
       ]);
+      if (isFluidMode) setIsFluidMode(false); // Desactivar modo fluido si hay error severo
     } finally {
       setIsTyping(false);
     }
@@ -526,11 +578,11 @@ PROTOCOLO:
                       <MicOff size={32} className="text-slate-400" />
                     )}
                   </button>
-                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">
                     {isFluidMode
                       ? isListening
                         ? "Habla ahora..."
-                        : "Conserje respondiendo..."
+                        : "Conserje procesando..."
                       : "Toca el micro para despertar al conserje"}
                   </p>
 
