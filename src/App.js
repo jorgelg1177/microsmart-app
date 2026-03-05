@@ -102,6 +102,20 @@ export default function App() {
   ]);
   const chatEndRef = useRef(null);
 
+  // EFECTO PARA BLOQUEAR EL SCROLL DEL NAVEGADOR (PWA Feeling)
+  useEffect(() => {
+    // Bloqueamos el scroll en el body para que no se mueva el navegador por fuera
+    document.body.style.overflow = "hidden";
+    document.body.style.position = "fixed";
+    document.body.style.width = "100%";
+    document.body.style.height = "100%";
+
+    return () => {
+      document.body.style.overflow = "auto";
+      document.body.style.position = "static";
+    };
+  }, []);
+
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [chatHistory, isTyping]);
@@ -311,16 +325,17 @@ PROTOCOLO:
   };
 
   return (
-    <div className="flex items-center justify-center min-h-screen bg-[#f3f4f6] p-4 font-sans text-slate-900">
-      <div className="w-full max-w-md h-[840px] max-h-[92vh] bg-white rounded-[3rem] shadow-[0_20px_50px_rgba(0,0,0,0.1)] overflow-hidden flex flex-col relative border-[10px] border-[#1e293b]">
-        {/* Notch superior */}
-        <div className="h-6 w-1/3 bg-[#1e293b] absolute top-0 left-1/2 -translate-x-1/2 rounded-b-2xl z-30"></div>
+    <div className="fixed inset-0 w-screen h-screen bg-[#f3f4f6] flex items-center justify-center font-sans text-slate-900 overflow-hidden">
+      {/* Contenedor principal estilo móvil */}
+      <div className="w-full max-w-md h-full md:h-[92vh] md:rounded-[3rem] bg-white shadow-[0_20px_50px_rgba(0,0,0,0.1)] overflow-hidden flex flex-col relative md:border-[10px] border-[#1e293b]">
+        {/* Notch superior (solo visible en escritorio como adorno) */}
+        <div className="hidden md:block h-6 w-1/3 bg-[#1e293b] absolute top-0 left-1/2 -translate-x-1/2 rounded-b-2xl z-30"></div>
 
-        {/* Cabecera con Logo */}
-        <div className="bg-white px-6 pt-12 pb-4 flex flex-col z-10">
-          <div className="flex justify-between items-center mb-6">
-            {/* Aumentado de h-10 a h-16 para que el logo sea más grande */}
-            <MicroSmartLogo className="h-16 w-auto flex items-center" />
+        {/* Cabecera FIJA */}
+        <div className="bg-white px-6 pt-10 pb-4 flex flex-col z-10 border-b border-slate-50 shrink-0">
+          <div className="flex justify-between items-center mb-4">
+            {/* Logo grande solicitado (h-[84px]) */}
+            <MicroSmartLogo className="h-[84px] w-auto flex items-center" />
             <div className="flex space-x-2">
               <button className="p-2 hover:bg-slate-100 rounded-full transition-colors relative">
                 <Bell size={20} className="text-slate-600" />
@@ -349,8 +364,8 @@ PROTOCOLO:
           </div>
         </div>
 
-        {/* Área de Contenido Principal */}
-        <div className="flex-1 overflow-y-auto pb-28 px-6 pt-2">
+        {/* Área de Contenido con SCROLL INTERNO */}
+        <div className="flex-1 overflow-y-auto pb-32 px-6 pt-2 scrollbar-hide">
           {activeTab === "home" && (
             <div className="flex flex-col items-center space-y-10 py-10 animate-in fade-in zoom-in duration-500">
               <div className="text-center">
@@ -704,20 +719,20 @@ PROTOCOLO:
                 </button>
               </div>
 
-              <div className="text-center pt-4">
+              <div className="text-center pt-4 pb-10">
                 <p className="text-[10px] font-black text-[#00479b] tracking-[0.2em]">
                   MICROSMART.ES
                 </p>
                 <p className="text-[9px] text-slate-300 font-bold mt-1 uppercase">
-                  Control Inteligente v1.2
+                  Control Inteligente v1.3
                 </p>
               </div>
             </div>
           )}
         </div>
 
-        {/* Menú Inferior Estilo Dock */}
-        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 w-[90%] bg-white/90 backdrop-blur-xl border border-white/50 px-4 py-3 flex justify-between items-center z-20 rounded-[2.5rem] shadow-2xl">
+        {/* Menú Inferior FIJO estilo Dock */}
+        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 w-[90%] bg-white/95 backdrop-blur-xl border border-white/50 px-4 py-3 flex justify-between items-center z-20 rounded-[2.5rem] shadow-2xl">
           <NavItem
             active={activeTab === "home"}
             onClick={() => setActiveTab("home")}
