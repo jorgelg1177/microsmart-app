@@ -28,13 +28,25 @@ import {
   FileText,
 } from "lucide-react";
 
-// Implementación de Backoff Exponencial protegida
+/**
+ * Función de utilidad para llamadas a la API con reintentos automáticos
+ */
 const fetchWithRetry = async (url, options, retries = 2, delay = 1000) => {
   try {
     const res = await fetch(url, options);
     if (!res.ok) {
       const errorData = await res.json().catch(() => null);
       console.error("Error de API:", res.status, errorData);
+      if (res.status === 401) {
+        throw new Error(
+          "Clave de API inválida o no proporcionada. Por favor, verifica la configuración."
+        );
+      }
+      if (res.status === 404) {
+        throw new Error(
+          "El modelo de IA no se encuentra. Verifica el nombre del modelo en el código."
+        );
+      }
       if (res.status === 400 || res.status === 403 || res.status === 429) {
         throw new Error(
           `Error de Google (${res.status}): ${
@@ -46,10 +58,12 @@ const fetchWithRetry = async (url, options, retries = 2, delay = 1000) => {
     }
     return await res.json();
   } catch (error) {
-    if (retries > 0 && !error.message.includes("Error de Google")) {
-      console.warn(
-        `Reintentando petición de red... Intentos restantes: ${retries}`
-      );
+    if (
+      retries > 0 &&
+      !error.message.includes("Error de Google") &&
+      !error.message.includes("no se encuentra") &&
+      !error.message.includes("Clave de API inválida")
+    ) {
       await new Promise((r) => setTimeout(r, delay));
       return fetchWithRetry(url, options, retries - 1, delay * 2);
     }
@@ -113,16 +127,13 @@ export default function App() {
   const [chatInput, setChatInput] = useState("");
   const [isTyping, setIsTyping] = useState(false);
 
-  // Estados para voz y fluidez
   const [isListening, setIsListening] = useState(false);
   const [isFluidMode, setIsFluidMode] = useState(false);
 
-  // Estados para funciones de IA extras
   const [isSummarizing, setIsSummarizing] = useState(false);
   const [activitySummary, setActivitySummary] = useState("");
   const [draftingId, setDraftingId] = useState(null);
 
-  // Referencias para el Bucle de Voz y Memoria Inmune a Closures (Solución a la amnesia)
   const isFluidModeRef = useRef(false);
   const isProcessingRef = useRef(false);
   const isSpeakingRef = useRef(false);
@@ -140,38 +151,53 @@ export default function App() {
   const [apiHistory, setApiHistory] = useState([]);
   const chatEndRef = useRef(null);
 
-  // --- SEGURIDAD: CLAVE API OCULTA DEFINITIVA ---
-  // Esta línea lee la clave secreta directamente de Vercel. Google no la bloqueará más.
-  let apiKey = "";
-  try {
-    apiKey = import.meta.env?.VITE_GEMINI_API_KEY || "";
-  } catch (e) {
+  // --- SEGURIDAD: CLAVE API ---
+  // Detectar clave de forma compatible con múltiples entornos
+  const getApiKey = () => {
     try {
-      apiKey =
-        process.env.VITE_GEMINI_API_KEY ||
-        process.env.REACT_APP_GEMINI_API_KEY ||
-        "";
-    } catch (err) {}
-  }
+      // Intento para Vite/Vercel (VITE_ prefix is standard)
+      const viteKey = import.meta.env?.VITE_GEMINI_API_KEY;
+      if (viteKey) return viteKey;
+    } catch (e) {}
 
-  // Sincronizar referencias para eventos de voz
+    // Fallback para procesos o variables globales
+    return (
+      (typeof process !== "undefined"
+        ? process.env?.VITE_GEMINI_API_KEY
+        : null) || ""
+    );
+  };
+
+  const apiKey = getApiKey();
+
+  // --- MODELO ADAPTATIVO ---
+  // Si usas tu propia clave (Vercel) usa el modelo público 1.5-flash.
+  // Si estás en el editor de pruebas, usa el modelo de preview.
+  // IMPORTANTE: Asegúrate de configurar la variable de entorno VITE_GEMINI_API_KEY en Vercel
+  // o proporcionar la clave directamente aquí durante el desarrollo (solo para pruebas).
+  const aiModel = apiKey
+    ? "gemini-1.5-flash"
+    : "gemini-2.5-flash-preview-09-2025";
+
   useEffect(() => {
     authorizedNamesRef.current = authorizedNames;
   }, [authorizedNames]);
 
-  // Precargar las voces del sistema
   useEffect(() => {
     if ("speechSynthesis" in window) {
       window.speechSynthesis.getVoices();
-      window.speechSynthesis.onvoiceschanged = () => {
+      window.speechSynthesis.onvoiceschanged = () =>
         window.speechSynthesis.getVoices();
-      };
     }
   }, []);
 
-  // --- FUNCIONES IA: RESUMEN Y REDACCIÓN ---
   const handleSummarizeActivity = async () => {
-    if (!apiKey) return;
+    if (!apiKey) {
+      setActivitySummary(
+        "Error: Clave de API no configurada. Verifica la configuración en Vercel."
+      );
+      return;
+    }
     if (historyLog.length === 0 || isSummarizing) return;
     setIsSummarizing(true);
     const activityData = historyLog
@@ -179,7 +205,7 @@ export default function App() {
       .join("\n");
     const prompt = `Resume brevemente la actividad de hoy del portero de forma profesional: ${activityData}`;
     try {
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${aiModel}:generateContent?key=${apiKey}`;
       const response = await fetchWithRetry(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -190,18 +216,21 @@ export default function App() {
           "No hay resumen disponible."
       );
     } catch (e) {
-      console.error(e);
+      setActivitySummary("Error al generar resumen: " + e.message);
     } finally {
       setIsSummarizing(false);
     }
   };
 
   const handleDraftReply = async (message) => {
-    if (!apiKey) return;
+    if (!apiKey) {
+      console.error("Error: Clave de API no configurada.");
+      return;
+    }
     setDraftingId(message.id);
-    const prompt = `Redacta una respuesta de WhatsApp muy corta y amable para este recado dejado en la vivienda: "${message.content}"`;
+    const prompt = `Redacta una respuesta de WhatsApp muy corta y amable para este recado: "${message.content}"`;
     try {
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${aiModel}:generateContent?key=${apiKey}`;
       const response = await fetchWithRetry(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -220,7 +249,6 @@ export default function App() {
     }
   };
 
-  // --- LÓGICA DE VOZ ---
   const speakResponse = (text) => {
     if ("speechSynthesis" in window) {
       window.speechSynthesis.cancel();
@@ -329,7 +357,6 @@ export default function App() {
     }
   };
 
-  // Bloqueo de Zoom y Scroll
   useEffect(() => {
     document.body.style.overflow = "hidden";
     document.body.style.position = "fixed";
@@ -407,7 +434,7 @@ export default function App() {
         {
           role: "ai",
           content:
-            "⚠️ Sistema: La aplicación se ha actualizado. Por favor, realiza el despliegue en Vercel para usar la clave segura.",
+            "⚠️ NOTA: Estás en el editor. Para usar la IA de forma segura, usa el despliegue oficial o configura la clave API correctamente.",
         },
       ]);
       setIsTyping(false);
@@ -422,7 +449,7 @@ export default function App() {
     setChatInput("");
     setIsTyping(true);
 
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${aiModel}:generateContent?key=${apiKey}`;
     const allowedNamesList =
       authorizedNamesRef.current.length > 0
         ? authorizedNamesRef.current.map((p) => p.name).join(", ")
@@ -431,27 +458,26 @@ export default function App() {
     const systemPrompt = `Eres el CONSERJE VIRTUAL INTELIGENTE de una VIVIENDA de alta seguridad (MicroSmart). Eres exclusivamente el conserje.
 
 REGLAS DE SEGURIDAD (CUMPLE AL 100%):
-1. ES UNA VIVIENDA, NO UN EDIFICIO: Habla siempre refiriéndote a "esta vivienda".
-2. AMABILIDAD Y CORTESÍA: Sé siempre muy amable, profesional y firme con la seguridad.
-3. PRIVACIDAD ABSOLUTA (¡CRÍTICO!): NUNCA reveles, completes ni sugieras el nombre o apellido de los propietarios. Si el visitante dice "Busco a Carlos" o "Traigo un paquete para Carlos", NUNCA le digas "¿Para Carlos García?". Debes preguntar: "¿Me podría indicar el apellido exacto de la persona a la que busca, por favor?".
-4. REGLA DEL SILENCIO SOBRE LA CASA: NUNCA digas que "no hay nadie en casa" ni ofrezcas dejar recados HASTA QUE el visitante haya dicho el NOMBRE Y APELLIDO EXACTOS y estos coincidan con la lista. Si dicen un nombre incorrecto o incompleto, simplemente di que se han equivocado de vivienda o insiste en pedir el nombre completo para verificar.
-5. FRASE EXACTA PARA PAQUETES: Si es un repartidor y ya verificaste que la empresa y el destinatario (nombre y apellido) son correctos, tu respuesta DEBE INCLUIR ESTA FRASE EXACTA antes de abrir: "Por favor, entre y ponga el paquete en un lugar seguro y cierre la puerta al salir, por favor y gracias."
-6. NO REPITAS SALUDOS: Ya saludaste al inicio. No vuelvas a decir Hola o Buenos días durante la charla.
-7. MEMORIA PERFECTA: Recuerda toda la conversación de forma inteligente. Si ya sabes de qué empresa vienen o a quién buscan, no lo preguntes de nuevo.
+1. ES UNA VIVIENDA, NO UN EDIFICIO.
+2. AMABILIDAD Y CORTESÍA SIEMPRE.
+3. PRIVACIDAD ABSOLUTA: NUNCA reveles ni completes apellidos. Pregunta: "¿Me podría indicar el apellido exacto, por favor?".
+4. REGLA DEL SILENCIO: NUNCA digas que no hay nadie hasta que digan NOMBRE Y APELLIDO EXACTOS.
+5. FRASE EXACTA PARA PAQUETES: "Por favor, entre y ponga el paquete en un lugar seguro y cierre la puerta al salir, por favor y gracias."
+6. NO REPITAS SALUDOS.
+7. MEMORIA PERFECTA: Recuerda toda la charla.
 
-LISTA DE PROPIETARIOS AUTORIZADOS: [${allowedNamesList}].
+LISTA DE PROPIETARIOS: [${allowedNamesList}].
 
-PROTOCOLO Y ETIQUETAS SECRETAS:
-A. REPARTIDORES VERIFICADOS (Nombre+Apellido exactos + Empresa): Usa al final: [ABRIR_PUERTA | Empresa | Destinatario]
-B. VISITAS VERIFICADAS (Nombre+Apellido exactos en la lista): Ofrece dejar un recado. Usa al final: [MENSAJE_PARA | NombreAutorizado | texto]
-C. RECHAZO (No coincide el nombre completo): Indica que no reside nadie con ese nombre completo y deniega el acceso. Usa al final: [ACCESO_DENEGADO | Motivo]
+PROTOCOLO:
+A. REPARTIDOR VERIFICADO: Usa frase de Regla 5. Etiqueta: [ABRIR_PUERTA | Empresa | Destinatario]
+B. VISITA VERIFICADA: Ofrece recado. Etiqueta: [MENSAJE_PARA | NombreAutorizado | texto]
+C. RECHAZO: Etiqueta: [ACCESO_DENEGADO | Motivo]
 
-Añade [FIN_CONVERSACION] solo cuando autorices paso, guardes recado o rechaces definitivamente.`;
+Añade [FIN_CONVERSACION] solo al terminar la gestión.`;
 
     let validApiHistory = [...apiHistoryRef.current];
     let combinedText = textToSend;
 
-    // Concatena mensajes si el usuario habla por partes (Solución a la amnesia)
     if (
       validApiHistory.length > 0 &&
       validApiHistory[validApiHistory.length - 1].role === "user"
@@ -473,14 +499,14 @@ Añade [FIN_CONVERSACION] solo cuando autorices paso, guardes recado o rechaces 
         }),
       });
       let aiText = data.candidates?.[0]?.content?.parts?.[0]?.text;
-      if (!aiText) throw new Error("Respuesta vacía del servidor.");
+      if (!aiText) throw new Error("Respuesta vacía.");
 
       const updatedHistory = [
         ...contents,
         { role: "model", parts: [{ text: aiText }] },
       ];
       setApiHistory(updatedHistory);
-      apiHistoryRef.current = updatedHistory; // Guardar en la referencia
+      apiHistoryRef.current = updatedHistory;
 
       let actionType = null,
         endConversation = false;
@@ -494,7 +520,6 @@ Añade [FIN_CONVERSACION] solo cuando autorices paso, guardes recado o rechaces 
         ...prev,
         { role: "ai", content: finalAiText, action: actionType },
       ]);
-
       isProcessingRef.current = false;
       if (endConversation) {
         isFluidModeRef.current = false;
@@ -836,7 +861,6 @@ Añade [FIN_CONVERSACION] solo cuando autorices paso, guardes recado o rechaces 
               <h2 className="text-xl font-black text-slate-800 mb-6 tracking-tight">
                 Configuración
               </h2>
-
               <div className="bg-white rounded-3xl p-5 shadow-sm border border-slate-100">
                 <div className="flex items-center space-x-3 mb-4">
                   <UserPlus size={18} className="text-[#00479b]" />
@@ -844,7 +868,6 @@ Añade [FIN_CONVERSACION] solo cuando autorices paso, guardes recado o rechaces 
                     Personas Autorizadas
                   </h3>
                 </div>
-
                 <div className="space-y-2 mb-4">
                   {authorizedNames.map((person, index) => (
                     <div
@@ -868,18 +891,17 @@ Añade [FIN_CONVERSACION] solo cuando autorices paso, guardes recado o rechaces 
                     </div>
                   ))}
                 </div>
-
                 <div className="space-y-2">
                   <input
                     type="text"
                     value={newName}
                     onChange={(e) => setNewName(e.target.value)}
                     placeholder="Nombre completo"
-                    className="w-full bg-slate-50 border border-slate-200 text-base text-slate-800 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#7bc100]/20"
+                    className="w-full bg-slate-50 border border-slate-200 text-base text-slate-800 rounded-lg px-3 py-2.5 focus:outline-none"
                   />
                   <div className="flex space-x-2">
                     <div className="flex-1 bg-slate-50 border border-slate-200 rounded-lg flex items-center px-3">
-                      <span className="text-slate-400 text-sm font-bold border-r border-slate-200 pr-2 mr-2">
+                      <span className="text-slate-400 text-sm font-bold pr-2 mr-2 border-r border-slate-200">
                         +34
                       </span>
                       <input
@@ -899,7 +921,6 @@ Añade [FIN_CONVERSACION] solo cuando autorices paso, guardes recado o rechaces 
                   </div>
                 </div>
               </div>
-
               <div className="bg-white rounded-3xl p-5 shadow-sm border border-slate-100 space-y-1">
                 <button className="w-full flex justify-between items-center p-2.5 hover:bg-slate-50 rounded-xl transition-all">
                   <div className="flex items-center space-x-3">
