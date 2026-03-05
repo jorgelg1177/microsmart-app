@@ -10,8 +10,10 @@ import {
   User,
   MapPin,
   Package,
+  ShieldAlert,
   ChevronRight,
   Wifi,
+  Send,
   Sparkles,
   X,
   UserPlus,
@@ -27,81 +29,40 @@ import {
 } from "lucide-react";
 
 /**
- * =========================================================
- * ✅ CONFIG GEMINI (NO HARDCODEAR API KEY)
- * =========================================================
- * Vite:   .env  -> VITE_GEMINI_API_KEY=xxxxx
- * CRA:    .env  -> REACT_APP_GEMINI_API_KEY=xxxxx
- */
-const GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta";
-
-// Vite / CRA fallback
-const getApiKey = () =>
-  (typeof import.meta !== "undefined" &&
-    import.meta.env?.VITE_GEMINI_API_KEY) ||
-  (typeof process !== "undefined" && process.env?.REACT_APP_GEMINI_API_KEY) ||
-  "";
-
-// Modelo por defecto (válido)
-const getModel = () =>
-  (typeof import.meta !== "undefined" && import.meta.env?.VITE_GEMINI_MODEL) ||
-  (typeof process !== "undefined" && process.env?.REACT_APP_GEMINI_MODEL) ||
-  "gemini-2.5-flash";
-
-/**
  * Función de utilidad para llamadas a la API con reintentos automáticos
- * (maneja errores JSON o texto plano)
  */
-const fetchWithRetry = async (url, options, retries = 2, delay = 900) => {
+const fetchWithRetry = async (url, options, retries = 2, delay = 1000) => {
   try {
     const res = await fetch(url, options);
-
     if (!res.ok) {
-      let json = null;
-      let text = "";
-
-      try {
-        json = await res.json();
-      } catch {
-        text = await res.text().catch(() => "");
+      const errorData = await res.json().catch(() => null);
+      console.error("Error de API:", res.status, errorData);
+      if (res.status === 401) {
+        throw new Error("Error 401: Clave de API inválida o revocada.");
       }
-
-      const msg =
-        json?.error?.message || json?.message || text || `HTTP ${res.status}`;
-
-      console.error("Gemini API error:", res.status, json || text);
-
-      if (res.status === 401)
-        throw new Error(`401: API key inválida/revocada. ${msg}`);
-      if (res.status === 403)
+      if (res.status === 404) {
+        throw new Error("Error 404: El modelo de IA no se encuentra.");
+      }
+      if (res.status === 400 || res.status === 403 || res.status === 429) {
         throw new Error(
-          `403: Acceso denegado (key restringida/referrer/API no habilitada). ${msg}`
+          `Error de Google (${res.status}): ${
+            errorData?.error?.message || "Revisar clave API o cuota"
+          }`
         );
-      if (res.status === 404)
-        throw new Error(`404: Modelo no encontrado (revisa aiModel). ${msg}`);
-      if (res.status === 429)
-        throw new Error(`429: Límite/cuota alcanzada. ${msg}`);
-      if (res.status === 400) throw new Error(`400: Petición inválida. ${msg}`);
-
-      throw new Error(msg);
+      }
+      throw new Error(`Error HTTP: ${res.status}`);
     }
-
     return await res.json();
   } catch (error) {
-    const msg = String(error?.message || error);
-
-    const noRetry =
-      msg.includes("401") ||
-      msg.includes("403") ||
-      msg.includes("404") ||
-      msg.includes("429") ||
-      msg.includes("400");
-
-    if (retries > 0 && !noRetry) {
+    if (
+      retries > 0 &&
+      !error.message.includes("Error 401") &&
+      !error.message.includes("Error 404") &&
+      !error.message.includes("Error de Google")
+    ) {
       await new Promise((r) => setTimeout(r, delay));
       return fetchWithRetry(url, options, retries - 1, delay * 2);
     }
-
     throw error;
   }
 };
@@ -113,11 +74,8 @@ const MicroSmartLogo = ({ className }) => (
       alt="MicroSmart Logo"
       className="h-full w-auto object-contain"
       onError={(e) => {
-        // ✅ nextSibling puede ser un text node -> evitamos crash
-        const img = e.currentTarget;
-        img.style.display = "none";
-        const fallback = img.parentElement?.querySelector("span");
-        if (fallback) fallback.style.display = "block";
+        e.target.style.display = "none";
+        e.target.nextSibling.style.display = "block";
       }}
     />
     <span className="hidden font-black text-xl tracking-tighter text-slate-800 uppercase">
@@ -134,30 +92,15 @@ const getCurrentTime = () => {
   });
 };
 
-// Extrae tags tipo: [ABRIR_PUERTA | Empresa | Destinatario]
-const extractFirstTag = (text, tagName) => {
-  const re = new RegExp(`\\[${tagName}\\s*\\|([^\\]]+)\\]`, "i");
-  const m = text.match(re);
-  if (!m) return null;
-  const parts = m[1].split("|").map((s) => s.trim());
-  return parts;
-};
-
 export default function App() {
-  const apiKey = getApiKey();
-  const aiModel = getModel();
-
   const [activeTab, setActiveTab] = useState("home");
-  const [doorStatus, setDoorStatus] = useState("idle"); // idle | opening | opened | denied
-
+  const [doorStatus, setDoorStatus] = useState("idle");
   const [authorizedNames, setAuthorizedNames] = useState([
     { name: "Carlos García", phone: "+34 600 111 222" },
     { name: "María López", phone: "+34 600 333 444" },
   ]);
-
   const [newName, setNewName] = useState("");
   const [newPhone, setNewPhone] = useState("");
-
   const [historyLog, setHistoryLog] = useState([
     {
       id: 1,
@@ -168,7 +111,6 @@ export default function App() {
       date: "Hoy",
     },
   ]);
-
   const [messagesList, setMessagesList] = useState([
     {
       id: 1,
@@ -178,7 +120,6 @@ export default function App() {
       phone: "+34 600 111 222",
     },
   ]);
-
   const [chatInput, setChatInput] = useState("");
   const [isTyping, setIsTyping] = useState(false);
 
@@ -189,7 +130,14 @@ export default function App() {
   const [activitySummary, setActivitySummary] = useState("");
   const [draftingId, setDraftingId] = useState(null);
 
-  const [debugAiStatus, setDebugAiStatus] = useState(""); // ✅ útil para diagnosticar “no conecta”
+  const isFluidModeRef = useRef(false);
+  const isProcessingRef = useRef(false);
+  const isSpeakingRef = useRef(false);
+  const recognitionRef = useRef(null);
+  const apiHistoryRef = useRef([]);
+  const authorizedNamesRef = useRef(authorizedNames);
+  const chatEndRef = useRef(null);
+
   const [chatHistory, setChatHistory] = useState([
     {
       role: "ai",
@@ -197,23 +145,18 @@ export default function App() {
         "Hola, soy el conserje inteligente de MicroSmart. ¿Con quién tengo el gusto de hablar y en qué puedo asistirle?",
     },
   ]);
+  const [apiHistory, setApiHistory] = useState([]);
 
-  const chatEndRef = useRef(null);
-
-  // Refs para evitar race conditions
-  const isFluidModeRef = useRef(false);
-  const isProcessingRef = useRef(false);
-  const isSpeakingRef = useRef(false);
-  const recognitionRef = useRef(null);
-
-  const apiHistoryRef = useRef([]); // historial que se manda a Gemini
-  const authorizedNamesRef = useRef(authorizedNames);
+  // =========================================================================
+  // --- CONFIGURACIÓN DE IA CON VARIABLE DE ENTORNO ---
+  // =========================================================================
+  const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+  const aiModel = "gemini-2.5-flash-preview-09-2025";
 
   useEffect(() => {
     authorizedNamesRef.current = authorizedNames;
   }, [authorizedNames]);
 
-  // Pre-cargar voces
   useEffect(() => {
     if ("speechSynthesis" in window) {
       window.speechSynthesis.getVoices();
@@ -222,141 +165,113 @@ export default function App() {
     }
   }, []);
 
-  // Bloqueo scroll (como lo tenías)
-  useEffect(() => {
-    document.body.style.overflow = "hidden";
-    document.body.style.position = "fixed";
-    document.body.style.width = "100%";
-    document.body.style.height = "100%";
-
-    let meta = document.querySelector('meta[name="viewport"]');
-    if (!meta) {
-      meta = document.createElement("meta");
-      meta.name = "viewport";
-      document.head.appendChild(meta);
-    }
-    meta.content =
-      "width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no";
-
-    const style = document.createElement("style");
-    style.innerHTML =
-      `* { touch-action: pan-y; -webkit-tap-highlight-color: transparent; }` +
-      ` input, textarea, select { font-size: 16px !important; }` +
-      ` .scrollbar-hide::-webkit-scrollbar { display: none; }` +
-      ` .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }`;
-    document.head.appendChild(style);
-
-    return () => {
-      document.body.style.overflow = "auto";
-      document.body.style.position = "static";
-      document.head.removeChild(style);
-    };
-  }, []);
-
-  useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [chatHistory, isTyping]);
-
-  /**
-   * ✅ Llamada única a Gemini (generateContent)
-   */
-  const geminiGenerate = async (payload) => {
-    if (!apiKey)
-      throw new Error(
-        "No hay API key. Configura VITE_GEMINI_API_KEY / REACT_APP_GEMINI_API_KEY."
+  const handleSummarizeActivity = async () => {
+    if (!apiKey) {
+      setActivitySummary(
+        "Falta configurar la clave API (VITE_GEMINI_API_KEY)."
       );
-
-    const url = `${GEMINI_BASE}/models/${aiModel}:generateContent`;
-
-    return fetchWithRetry(url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-goog-api-key": apiKey,
-      },
-      body: JSON.stringify(payload),
-    });
+      return;
+    }
+    if (historyLog.length === 0 || isSummarizing) return;
+    setIsSummarizing(true);
+    const activityData = historyLog
+      .map((log) => `${log.time}: ${log.title} - ${log.desc}`)
+      .join("\n");
+    const prompt = `Resume brevemente la actividad de hoy del portero de forma profesional: ${activityData}`;
+    try {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${aiModel}:generateContent?key=${apiKey}`;
+      const response = await fetchWithRetry(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
+      });
+      setActivitySummary(
+        response.candidates?.[0]?.content?.parts?.[0]?.text ||
+          "No hay resumen disponible."
+      );
+    } catch (e) {
+      setActivitySummary("Error: " + e.message);
+    } finally {
+      setIsSummarizing(false);
+    }
   };
 
-  /**
-   * ✅ Botón “Probar IA” (diagnóstico rápido)
-   */
-  const testAiConnection = async () => {
-    setDebugAiStatus("Probando conexión con IA…");
+  const handleDraftReply = async (message) => {
+    if (!apiKey) {
+      alert("Falta configurar la clave API (VITE_GEMINI_API_KEY).");
+      return;
+    }
+    setDraftingId(message.id);
+    const prompt = `Redacta una respuesta de WhatsApp muy corta y amable para este recado: "${message.content}"`;
     try {
-      const data = await geminiGenerate({
-        contents: [
-          { role: "user", parts: [{ text: "Responde solo con: OK" }] },
-        ],
-        generationConfig: { temperature: 0.0 },
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${aiModel}:generateContent?key=${apiKey}`;
+      const response = await fetchWithRetry(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
       });
-      const txt = data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
-      setDebugAiStatus(`✅ IA responde: ${txt || "(vacío)"}`);
+      const draft = response.candidates?.[0]?.content?.parts?.[0]?.text;
+      const whatsappUrl = `https://wa.me/${message.phone.replace(
+        /\D/g,
+        ""
+      )}?text=${encodeURIComponent(draft.trim())}`;
+      window.open(whatsappUrl, "_blank");
     } catch (e) {
-      setDebugAiStatus(`❌ ${e.message}`);
+      console.error(e);
+    } finally {
+      setDraftingId(null);
     }
   };
 
   const speakResponse = (text) => {
-    if (!("speechSynthesis" in window)) return;
-
-    window.speechSynthesis.cancel();
-    const cleanText = text.replace(/\[.*?\]/g, "").trim();
-
-    if (!cleanText) {
-      isProcessingRef.current = false;
-      if (isFluidModeRef.current) setTimeout(startListening, 300);
-      return;
-    }
-
-    const utterance = new SpeechSynthesisUtterance(cleanText);
-    utterance.lang = "es-ES";
-
-    const voices = window.speechSynthesis.getVoices();
-    const preferredNames = [
-      "google",
-      "premium",
-      "natural",
-      "monica",
-      "paulina",
-      "jorge",
-    ];
-
-    let bestVoice = voices.find(
-      (v) =>
-        (v.lang.startsWith("es-") || v.lang === "es") &&
-        preferredNames.some((name) => v.name.toLowerCase().includes(name))
-    );
-    if (!bestVoice)
-      bestVoice = voices.find(
-        (v) => v.lang.startsWith("es-") || v.lang === "es"
+    if ("speechSynthesis" in window) {
+      window.speechSynthesis.cancel();
+      const cleanText = text.replace(/\[.*?\]/g, "").trim();
+      if (!cleanText) {
+        isProcessingRef.current = false;
+        if (isFluidModeRef.current) setTimeout(startListening, 300);
+        return;
+      }
+      const utterance = new SpeechSynthesisUtterance(cleanText);
+      utterance.lang = "es-ES";
+      const voices = window.speechSynthesis.getVoices();
+      const preferredNames = [
+        "google",
+        "premium",
+        "natural",
+        "monica",
+        "paulina",
+        "jorge",
+      ];
+      let bestVoice = voices.find(
+        (v) =>
+          (v.lang.startsWith("es-") || v.lang === "es") &&
+          preferredNames.some((name) => v.name.toLowerCase().includes(name))
       );
-    if (bestVoice) utterance.voice = bestVoice;
-
-    utterance.rate = 1.0;
-    utterance.pitch = 1.0;
-
-    isSpeakingRef.current = true;
-    utterance.onend = () => {
-      isSpeakingRef.current = false;
-      if (isFluidModeRef.current) setTimeout(startListening, 300);
-    };
-    window.speechSynthesis.speak(utterance);
+      if (!bestVoice)
+        bestVoice = voices.find(
+          (v) => v.lang.startsWith("es-") || v.lang === "es"
+        );
+      if (bestVoice) utterance.voice = bestVoice;
+      utterance.rate = 1.0;
+      utterance.pitch = 1.0;
+      isSpeakingRef.current = true;
+      utterance.onend = () => {
+        isSpeakingRef.current = false;
+        if (isFluidModeRef.current) setTimeout(startListening, 300);
+      };
+      window.speechSynthesis.speak(utterance);
+    }
   };
 
   const startListening = () => {
     const SpeechRecognition =
       window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SpeechRecognition) return;
-
     if (!recognitionRef.current) {
       recognitionRef.current = new SpeechRecognition();
       recognitionRef.current.lang = "es-ES";
-      recognitionRef.current.interimResults = false;
-      recognitionRef.current.continuous = false;
-
       recognitionRef.current.onstart = () => setIsListening(true);
-
       recognitionRef.current.onend = () => {
         setIsListening(false);
         if (
@@ -369,38 +284,31 @@ export default function App() {
               isFluidModeRef.current &&
               !isProcessingRef.current &&
               !isSpeakingRef.current
-            ) {
+            )
               try {
                 recognitionRef.current.start();
-              } catch {}
-            }
+              } catch (e) {}
           }, 300);
         }
       };
-
       recognitionRef.current.onresult = (event) => {
-        const transcript = event.results?.[0]?.[0]?.transcript || "";
+        const transcript = event.results[0][0].transcript;
         if (transcript.trim()) {
           isProcessingRef.current = true;
-          try {
-            recognitionRef.current.stop();
-          } catch {}
+          recognitionRef.current.stop();
           handleSimulateVisitor(transcript);
         }
       };
-
       recognitionRef.current.onerror = () => setIsListening(false);
     }
-
     if (
       isFluidModeRef.current &&
       !isProcessingRef.current &&
       !isSpeakingRef.current
-    ) {
+    )
       try {
         recognitionRef.current.start();
-      } catch {}
-    }
+      } catch (e) {}
   };
 
   const toggleFluidMode = () => {
@@ -410,25 +318,45 @@ export default function App() {
       setIsListening(false);
       isProcessingRef.current = false;
       isSpeakingRef.current = false;
-
-      try {
-        recognitionRef.current?.abort?.();
-        recognitionRef.current?.stop?.();
-      } catch {}
-
+      if (recognitionRef.current) recognitionRef.current.stop();
       window.speechSynthesis.cancel();
     } else {
-      // “unlock” audio
       if ("speechSynthesis" in window) {
         const unlock = new SpeechSynthesisUtterance("");
         window.speechSynthesis.speak(unlock);
       }
-
       isFluidModeRef.current = true;
       setIsFluidMode(true);
       startListening();
     }
   };
+
+  useEffect(() => {
+    document.body.style.overflow = "hidden";
+    document.body.style.position = "fixed";
+    document.body.style.width = "100%";
+    document.body.style.height = "100%";
+    let meta = document.querySelector('meta[name="viewport"]');
+    if (!meta) {
+      meta = document.createElement("meta");
+      meta.name = "viewport";
+      document.head.appendChild(meta);
+    }
+    meta.content =
+      "width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no";
+    const style = document.createElement("style");
+    style.innerHTML = `* { touch-action: pan-y; -webkit-tap-highlight-color: transparent; } input, textarea, select { font-size: 16px !important; } .scrollbar-hide::-webkit-scrollbar { display: none; } .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }`;
+    document.head.appendChild(style);
+    return () => {
+      document.body.style.overflow = "auto";
+      document.body.style.position = "static";
+      document.head.removeChild(style);
+    };
+  }, []);
+
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [chatHistory, isTyping]);
 
   const handleAddName = () => {
     if (newName.trim() && newPhone.trim()) {
@@ -452,7 +380,6 @@ export default function App() {
 
   const handleOpenDoor = () => {
     if (doorStatus !== "idle") return;
-
     setDoorStatus("opening");
     setTimeout(() => {
       setDoorStatus("opened");
@@ -468,154 +395,11 @@ export default function App() {
         ...prev,
       ]);
       setTimeout(() => setDoorStatus("idle"), 2000);
-    }, 1200);
-  };
-
-  // ✅ Acciones derivadas de la IA (ABRIR/MENSAJE/DENEGAR)
-  const applyAiAction = (rawAiText) => {
-    // ABRIR_PUERTA | Empresa | Destinatario
-    const abrir = extractFirstTag(rawAiText, "ABRIR_PUERTA");
-    if (abrir && abrir.length >= 2) {
-      const empresa = abrir[0] || "Empresa";
-      const destinatario = abrir[1] || "Destinatario";
-
-      setDoorStatus("opening");
-      setTimeout(() => {
-        setDoorStatus("opened");
-        setHistoryLog((prev) => [
-          {
-            id: Date.now(),
-            type: "ai_open",
-            title: "Apertura IA (Reparto)",
-            desc: `${empresa} → ${destinatario}`,
-            time: getCurrentTime(),
-            date: "Hoy",
-          },
-          ...prev,
-        ]);
-        setTimeout(() => setDoorStatus("idle"), 2000);
-      }, 1200);
-
-      return "opened";
-    }
-
-    // MENSAJE_PARA | NombreAutorizado | texto
-    const msg = extractFirstTag(rawAiText, "MENSAJE_PARA");
-    if (msg && msg.length >= 2) {
-      const destinatario = msg[0] || "Destinatario";
-      const texto = msg.slice(1).join(" | ") || "Recado";
-
-      const person = authorizedNamesRef.current.find(
-        (p) => p.name.toLowerCase() === destinatario.toLowerCase()
-      );
-      const phone = person?.phone || "+34";
-
-      setMessagesList((prev) => [
-        {
-          id: Date.now(),
-          recipient: destinatario,
-          content: texto,
-          time: getCurrentTime(),
-          phone,
-        },
-        ...prev,
-      ]);
-
-      setHistoryLog((prev) => [
-        {
-          id: Date.now(),
-          type: "ai_msg",
-          title: "Recado guardado (IA)",
-          desc: `${destinatario}: ${texto}`,
-          time: getCurrentTime(),
-          date: "Hoy",
-        },
-        ...prev,
-      ]);
-
-      return "message_saved";
-    }
-
-    // ACCESO_DENEGADO | Motivo
-    const den = extractFirstTag(rawAiText, "ACCESO_DENEGADO");
-    if (den) {
-      const motivo = den.join(" | ") || "No verificado";
-      setDoorStatus("denied");
-      setHistoryLog((prev) => [
-        {
-          id: Date.now(),
-          type: "ai_denied",
-          title: "Acceso denegado (IA)",
-          desc: motivo,
-          time: getCurrentTime(),
-          date: "Hoy",
-        },
-        ...prev,
-      ]);
-      setTimeout(() => setDoorStatus("idle"), 1500);
-      return "denied";
-    }
-
-    return null;
-  };
-
-  const handleSummarizeActivity = async () => {
-    if (!apiKey) return;
-    if (historyLog.length === 0 || isSummarizing) return;
-
-    setIsSummarizing(true);
-    const activityData = historyLog
-      .map((log) => `${log.time}: ${log.title} - ${log.desc}`)
-      .join("\n");
-    const prompt = `Resume brevemente la actividad de hoy del portero de forma profesional:\n${activityData}`;
-
-    try {
-      const response = await geminiGenerate({
-        contents: [{ role: "user", parts: [{ text: prompt }] }],
-        generationConfig: { temperature: 0.3 },
-      });
-
-      setActivitySummary(
-        response.candidates?.[0]?.content?.parts?.[0]?.text ||
-          "No hay resumen disponible."
-      );
-    } catch (e) {
-      setActivitySummary("Error: " + e.message);
-    } finally {
-      setIsSummarizing(false);
-    }
-  };
-
-  const handleDraftReply = async (message) => {
-    if (!apiKey) return;
-
-    setDraftingId(message.id);
-    const prompt = `Redacta una respuesta de WhatsApp muy corta y amable para este recado: "${message.content}"`;
-
-    try {
-      const response = await geminiGenerate({
-        contents: [{ role: "user", parts: [{ text: prompt }] }],
-        generationConfig: { temperature: 0.4 },
-      });
-
-      const draft = response.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
-      if (!draft) throw new Error("La IA devolvió un borrador vacío.");
-
-      const whatsappUrl = `https://wa.me/${message.phone.replace(
-        /\D/g,
-        ""
-      )}?text=${encodeURIComponent(draft)}`;
-      window.open(whatsappUrl, "_blank");
-    } catch (e) {
-      console.error(e);
-      alert("Error redactando: " + e.message);
-    } finally {
-      setDraftingId(null);
-    }
+    }, 1500);
   };
 
   const handleSimulateVisitor = async (textOverride) => {
-    const textToSend = textOverride ?? chatInput;
+    const textToSend = textOverride || chatInput;
     if (!textToSend.trim() || isTyping) return;
 
     if (!apiKey) {
@@ -624,7 +408,7 @@ export default function App() {
         {
           role: "ai",
           content:
-            "⚠️ Sistema: No se detecta API key. Configura VITE_GEMINI_API_KEY / REACT_APP_GEMINI_API_KEY.",
+            "⚠️ Sistema: No se detecta la clave API (revisa tu archivo .env).",
         },
       ]);
       setIsTyping(false);
@@ -633,30 +417,27 @@ export default function App() {
     }
 
     isProcessingRef.current = true;
-
-    try {
-      recognitionRef.current?.stop?.();
-    } catch {}
+    if (recognitionRef.current) recognitionRef.current.stop();
 
     setChatHistory((prev) => [...prev, { role: "user", content: textToSend }]);
     setChatInput("");
     setIsTyping(true);
 
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${aiModel}:generateContent?key=${apiKey}`;
     const allowedNamesList =
       authorizedNamesRef.current.length > 0
         ? authorizedNamesRef.current.map((p) => p.name).join(", ")
         : "Nadie";
 
     const systemPrompt = `Eres el CONSERJE VIRTUAL INTELIGENTE de una VIVIENDA de alta seguridad (MicroSmart). Eres exclusivamente el conserje.
-
 REGLAS DE SEGURIDAD (CUMPLE AL 100%):
 1. ES UNA VIVIENDA, NO UN EDIFICIO: Habla siempre refiriéndote a "esta vivienda".
 2. AMABILIDAD Y CORTESÍA: Sé siempre muy amable, profesional y firme con la seguridad.
 3. PRIVACIDAD ABSOLUTA (¡CRÍTICO!): NUNCA reveles, completes ni sugieras el nombre o apellido de los propietarios. Si el visitante dice "Busco a Carlos" o "Traigo un paquete para Carlos", NUNCA le digas "¿Para Carlos García?". Debes preguntar: "¿Me podría indicar el apellido exacto de la persona a la que busca, por favor?".
-4. REGLA DEL SILENCIO SOBRE LA CASA: NUNCA digas que "no hay nadie en casa" ni ofrezcas dejar recados HASTA QUE el visitante haya dicho el NOMBRE Y APELLIDO EXACTOS y estos coincidan con la lista.
+4. REGLA DEL SILENCIO SOBRE LA CASA: NUNCA digas que "no hay nadie en casa" ni ofrezcas dejar recados HASTA QUE el visitante haya dicho el NOMBRE Y APELLIDO EXACTOS y estos coincidan con la lista. Si dicen un nombre incorrecto o incompleto, simplemente di que se han equivocado de vivienda o insiste en pedir el nombre completo para verificar.
 5. FRASE EXACTA PARA PAQUETES: Si es un repartidor y ya verificaste que la empresa y el destinatario (nombre y apellido) son correctos, tu respuesta DEBE INCLUIR ESTA FRASE EXACTA antes de abrir: "Por favor, entre y ponga el paquete en un lugar seguro y cierre la puerta al salir, por favor y gracias."
 6. NO REPITAS SALUDOS: Ya saludaste al inicio. No vuelvas a decir Hola o Buenos días durante la charla.
-7. MEMORIA PERFECTA: Recuerda toda la conversación de forma inteligente.
+7. MEMORIA PERFECTA: Recuerda toda la conversación de forma inteligente. Si ya sabes de qué empresa vienen o a quién buscan, no lo preguntes de nuevo.
 
 LISTA DE PROPIETARIOS AUTORIZADOS: [${allowedNamesList}].
 
@@ -667,32 +448,45 @@ C. RECHAZO (No coincide el nombre completo): Indica que no reside nadie con ese 
 
 Añade [FIN_CONVERSACION] solo cuando autorices paso, guardes recado o rechaces definitivamente.`;
 
-    // Historial para Gemini
     let validApiHistory = [...apiHistoryRef.current];
+    let combinedText = textToSend;
 
-    // ✅ No intentes “fusionar” mensajes si no hace falta: puede confundir contexto
-    const newApiMsg = { role: "user", parts: [{ text: textToSend }] };
+    if (
+      validApiHistory.length > 0 &&
+      validApiHistory[validApiHistory.length - 1].role === "user"
+    ) {
+      const lastMsg = validApiHistory.pop();
+      combinedText = lastMsg.parts[0].text + ". " + textToSend;
+    }
+    const newApiMsg = { role: "user", parts: [{ text: combinedText }] };
     const contents = [...validApiHistory, newApiMsg];
 
     try {
-      const data = await geminiGenerate({
-        systemInstruction: { parts: [{ text: systemPrompt }] },
-        contents,
-        generationConfig: { temperature: 0.3 },
+      const data = await fetchWithRetry(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          systemInstruction: { parts: [{ text: systemPrompt }] },
+          contents: contents,
+          generationConfig: { temperature: 0.3 },
+        }),
       });
-
       let aiText = data.candidates?.[0]?.content?.parts?.[0]?.text;
       if (!aiText) throw new Error("Respuesta vacía del servidor.");
 
-      // Guardar historial
       const updatedHistory = [
         ...contents,
         { role: "model", parts: [{ text: aiText }] },
       ];
+      setApiHistory(updatedHistory);
       apiHistoryRef.current = updatedHistory;
 
-      const endConversation = aiText.includes("[FIN_CONVERSACION]");
-      const actionType = applyAiAction(aiText);
+      let actionType = null,
+        endConversation = false;
+      if (aiText.includes("[ABRIR_PUERTA")) actionType = "opened";
+      else if (aiText.includes("[MENSAJE_PARA")) actionType = "message_saved";
+      else if (aiText.includes("[ACCESO_DENEGADO")) actionType = "denied";
+      if (aiText.includes("[FIN_CONVERSACION]")) endConversation = true;
 
       const finalAiText = aiText.replace(/\[.*?\]/g, "").trim();
       setChatHistory((prev) => [
@@ -705,12 +499,11 @@ Añade [FIN_CONVERSACION] solo cuando autorices paso, guardes recado o rechaces 
         isFluidModeRef.current = false;
         setIsFluidMode(false);
       }
-
       speakResponse(finalAiText);
     } catch (error) {
       setChatHistory((prev) => [
         ...prev,
-        { role: "ai", content: `⚠️ Error IA: ${error.message}` },
+        { role: "ai", content: `⚠️ Error: ${error.message}` },
       ]);
       isProcessingRef.current = false;
       if (isFluidModeRef.current) setTimeout(startListening, 1500);
@@ -724,7 +517,6 @@ Añade [FIN_CONVERSACION] solo cuando autorices paso, guardes recado o rechaces 
       <div className="w-full max-w-md h-full md:h-[92vh] md:max-h-[850px] md:rounded-[3rem] bg-white shadow-[0_20px_50px_rgba(0,0,0,0.1)] overflow-hidden flex flex-col relative md:border-[10px] border-[#1e293b]">
         <div className="hidden md:block h-6 w-1/3 bg-[#1e293b] absolute top-0 left-1/2 -translate-x-1/2 rounded-b-2xl z-30"></div>
 
-        {/* Header */}
         <div className="bg-white px-6 pt-8 pb-3 flex flex-col z-10 border-b border-slate-50 shrink-0">
           <div className="flex justify-between items-center mb-3">
             <MicroSmartLogo className="h-[84px] w-auto flex items-center" />
@@ -737,14 +529,13 @@ Añade [FIN_CONVERSACION] solo cuando autorices paso, guardes recado o rechaces 
               </button>
             </div>
           </div>
-
           <div className="flex items-center space-x-3 p-3 bg-slate-50 rounded-2xl border border-slate-100">
             <div className="w-10 h-10 bg-[#00479b] rounded-xl flex items-center justify-center shadow-lg shadow-blue-900/10">
               <User size={20} className="text-white" />
             </div>
             <div className="overflow-hidden">
               <h1 className="text-base font-bold text-slate-800 leading-tight truncate">
-                Hola, {authorizedNames[0]?.name?.split(" ")[0] || "Usuario"}
+                Hola, {authorizedNames[0]?.name?.split(" ")[0]}
               </h1>
               <p className="text-[10px] text-slate-500 font-medium flex items-center">
                 <MapPin size={10} className="mr-1 text-[#7bc100]" />{" "}
@@ -754,7 +545,6 @@ Añade [FIN_CONVERSACION] solo cuando autorices paso, guardes recado o rechaces 
           </div>
         </div>
 
-        {/* Content */}
         <div className="flex-1 overflow-y-auto pb-24 px-6 pt-2 scrollbar-hide">
           {activeTab === "home" && (
             <div className="flex flex-col items-center space-y-8 py-8 animate-in fade-in zoom-in duration-500">
@@ -762,8 +552,6 @@ Añade [FIN_CONVERSACION] solo cuando autorices paso, guardes recado o rechaces 
                 className={`inline-flex items-center space-x-2 px-4 py-1.5 rounded-full text-[10px] font-bold transition-all ${
                   doorStatus === "idle"
                     ? "bg-green-50 text-green-600"
-                    : doorStatus === "denied"
-                    ? "bg-red-50 text-red-600"
                     : "bg-blue-50 text-blue-600"
                 }`}
               >
@@ -771,66 +559,33 @@ Añade [FIN_CONVERSACION] solo cuando autorices paso, guardes recado o rechaces 
                   className={`w-2 h-2 rounded-full ${
                     doorStatus === "idle"
                       ? "bg-green-500"
-                      : doorStatus === "denied"
-                      ? "bg-red-500"
                       : "bg-blue-500 animate-pulse"
                   }`}
                 ></div>
-                <span>
-                  {doorStatus === "idle"
-                    ? "SISTEMA ONLINE"
-                    : doorStatus === "opening"
-                    ? "ABRIENDO…"
-                    : doorStatus === "opened"
-                    ? "PUERTA ABIERTA"
-                    : "ACCESO DENEGADO"}
-                </span>
+                <span>SISTEMA ONLINE</span>
               </div>
-
               <button
                 onClick={handleOpenDoor}
                 disabled={doorStatus !== "idle"}
                 className={`relative w-56 h-56 rounded-full flex flex-col items-center justify-center shadow-2xl transition-all duration-300 transform active:scale-95 ${
                   doorStatus === "idle"
                     ? "bg-gradient-to-tr from-[#6aa600] to-[#8be000] shadow-[#7bc100]/30"
-                    : doorStatus === "denied"
-                    ? "bg-red-500 shadow-red-500/30"
                     : "bg-[#00479b] shadow-blue-900/30"
                 }`}
               >
-                {doorStatus === "idle" && (
+                {doorStatus === "idle" ? (
                   <>
                     <Power size={56} className="text-white mb-2" />
                     <span className="text-white text-xl font-black">ABRIR</span>
                   </>
-                )}
-
-                {doorStatus === "opening" && (
+                ) : (
                   <>
                     <ShieldCheck
                       size={56}
                       className="text-white mb-2 animate-bounce"
                     />
                     <span className="text-white text-lg font-bold">
-                      ABRIENDO
-                    </span>
-                  </>
-                )}
-
-                {doorStatus === "opened" && (
-                  <>
-                    <ShieldCheck size={56} className="text-white mb-2" />
-                    <span className="text-white text-lg font-bold">
-                      ABIERTO
-                    </span>
-                  </>
-                )}
-
-                {doorStatus === "denied" && (
-                  <>
-                    <ShieldCheck size={56} className="text-white mb-2" />
-                    <span className="text-white text-lg font-bold">
-                      DENEGADO
+                      PROCESANDO
                     </span>
                   </>
                 )}
@@ -849,22 +604,7 @@ Añade [FIN_CONVERSACION] solo cuando autorices paso, guardes recado o rechaces 
                   <p className="text-[9px] font-bold text-slate-400 mt-1 uppercase tracking-widest">
                     Conversación Fluida
                   </p>
-
-                  {/* ✅ Diagnóstico */}
-                  <div className="mt-2 flex items-center gap-2">
-                    <button
-                      onClick={testAiConnection}
-                      className="text-[9px] font-black px-2 py-1 rounded-full bg-slate-200 text-slate-700 active:scale-95"
-                    >
-                      Probar IA
-                    </button>
-                    <span className="text-[9px] font-bold text-slate-400 truncate max-w-[230px]">
-                      {debugAiStatus ||
-                        (!apiKey ? "⚠️ Falta API key" : `Modelo: ${aiModel}`)}
-                    </span>
-                  </div>
                 </div>
-
                 <div
                   className={`px-2 py-1 ${
                     isFluidMode
@@ -875,7 +615,6 @@ Añade [FIN_CONVERSACION] solo cuando autorices paso, guardes recado o rechaces 
                   {isFluidMode ? "CONSERJE DESPIERTO" : "MODO DORMIDO"}
                 </div>
               </div>
-
               <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
                 {chatHistory.map((msg, idx) => (
                   <div
@@ -895,7 +634,6 @@ Añade [FIN_CONVERSACION] solo cuando autorices paso, guardes recado o rechaces 
                     </div>
                   </div>
                 ))}
-
                 {isTyping && (
                   <div className="flex justify-start">
                     <div className="bg-white border border-slate-100 px-4 py-2 rounded-2xl rounded-bl-none shadow-sm flex space-x-1">
@@ -911,10 +649,8 @@ Añade [FIN_CONVERSACION] solo cuando autorices paso, guardes recado o rechaces 
                     </div>
                   </div>
                 )}
-
                 <div ref={chatEndRef} />
               </div>
-
               <div className="p-4 bg-white border-t border-slate-100">
                 <div className="flex flex-col items-center space-y-4">
                   <button
@@ -944,23 +680,6 @@ Añade [FIN_CONVERSACION] solo cuando autorices paso, guardes recado o rechaces 
                         : "Pensando..."
                       : "Toca el micro para despertar"}
                   </p>
-
-                  {/* ✅ input manual también */}
-                  <div className="w-full flex gap-2">
-                    <input
-                      value={chatInput}
-                      onChange={(e) => setChatInput(e.target.value)}
-                      placeholder="Escribe como si fueras el visitante…"
-                      className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm"
-                    />
-                    <button
-                      onClick={() => handleSimulateVisitor()}
-                      disabled={isTyping}
-                      className="px-3 py-2 rounded-xl bg-slate-900 text-white text-xs font-black active:scale-95"
-                    >
-                      Enviar
-                    </button>
-                  </div>
                 </div>
               </div>
             </div>
@@ -985,7 +704,6 @@ Añade [FIN_CONVERSACION] solo cuando autorices paso, guardes recado o rechaces 
                   <span>✨ RESUMIR</span>
                 </button>
               </div>
-
               {activitySummary && (
                 <div className="mb-6 bg-blue-50 p-4 rounded-3xl border border-blue-100 animate-in slide-in-from-top-2">
                   <h4 className="text-[10px] font-black text-[#00479b] mb-1 uppercase tracking-widest flex items-center">
@@ -1002,7 +720,6 @@ Añade [FIN_CONVERSACION] solo cuando autorices paso, guardes recado o rechaces 
                   </button>
                 </div>
               )}
-
               <div className="space-y-3">
                 {historyLog.map((log) => (
                   <div
@@ -1076,11 +793,9 @@ Añade [FIN_CONVERSACION] solo cuando autorices paso, guardes recado o rechaces 
                           {msg.time}
                         </span>
                       </div>
-
                       <p className="text-xs text-slate-600 mb-4 font-medium italic">
                         "{msg.content}"
                       </p>
-
                       <div className="flex space-x-2">
                         <button
                           onClick={() => handleDraftReply(msg)}
@@ -1094,7 +809,6 @@ Añade [FIN_CONVERSACION] solo cuando autorices paso, guardes recado o rechaces 
                           )}
                           ✨ REDACTAR
                         </button>
-
                         <a
                           href={`https://wa.me/${msg.phone.replace(
                             /\D/g,
@@ -1121,7 +835,6 @@ Añade [FIN_CONVERSACION] solo cuando autorices paso, guardes recado o rechaces 
               <h2 className="text-xl font-black text-slate-800 mb-6 tracking-tight">
                 Configuración
               </h2>
-
               <div className="bg-white rounded-3xl p-5 shadow-sm border border-slate-100">
                 <div className="flex items-center space-x-3 mb-4">
                   <UserPlus size={18} className="text-[#00479b]" />
@@ -1129,7 +842,6 @@ Añade [FIN_CONVERSACION] solo cuando autorices paso, guardes recado o rechaces 
                     Personas Autorizadas
                   </h3>
                 </div>
-
                 <div className="space-y-2 mb-4">
                   {authorizedNames.map((person, index) => (
                     <div
@@ -1153,7 +865,6 @@ Añade [FIN_CONVERSACION] solo cuando autorices paso, guardes recado o rechaces 
                     </div>
                   ))}
                 </div>
-
                 <div className="space-y-2">
                   <input
                     type="text"
@@ -1184,7 +895,6 @@ Añade [FIN_CONVERSACION] solo cuando autorices paso, guardes recado o rechaces 
                   </div>
                 </div>
               </div>
-
               <div className="bg-white rounded-3xl p-5 shadow-sm border border-slate-100 space-y-1">
                 <button className="w-full flex justify-between items-center p-2.5 hover:bg-slate-50 rounded-xl transition-all">
                   <div className="flex items-center space-x-3">
@@ -1195,32 +905,17 @@ Añade [FIN_CONVERSACION] solo cuando autorices paso, guardes recado o rechaces 
                   </div>
                   <ChevronRight size={16} className="text-slate-300" />
                 </button>
-
                 <button className="w-full flex justify-between items-center p-2.5 hover:bg-red-50 rounded-xl transition-all text-red-500">
                   <div className="flex items-center space-x-3">
                     <LogOut size={18} />
                     <span className="text-xs font-bold">Desconectar App</span>
                   </div>
                 </button>
-
-                {/* ✅ Debug info útil */}
-                <div className="mt-3 text-[10px] font-bold text-slate-400">
-                  <div>
-                    Modelo: <span className="text-slate-600">{aiModel}</span>
-                  </div>
-                  <div>
-                    API key:{" "}
-                    <span className="text-slate-600">
-                      {apiKey ? "✅ detectada" : "❌ no detectada"}
-                    </span>
-                  </div>
-                </div>
               </div>
             </div>
           )}
         </div>
 
-        {/* Bottom Nav */}
         <div className="absolute bottom-4 left-1/2 -translate-x-1/2 w-[92%] bg-white/95 backdrop-blur-xl border border-white/50 px-2 py-2 flex justify-between items-center z-20 rounded-[2rem] shadow-2xl">
           <NavItem
             active={activeTab === "home"}
@@ -1259,7 +954,7 @@ Añade [FIN_CONVERSACION] solo cuando autorices paso, guardes recado o rechaces 
   );
 }
 
-function NavItem({ active, onClick, icon, label, badge = 0 }) {
+function NavItem({ active, onClick, icon, label, badge }) {
   return (
     <button
       onClick={onClick}
