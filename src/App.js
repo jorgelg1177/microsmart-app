@@ -108,9 +108,26 @@ export default function App() {
     document.body.style.width = "100%";
     document.body.style.height = "100%";
 
+    // Inyectar CSS para asegurar que los inputs no fuercen zoom (font-size 16px)
+    const style = document.createElement("style");
+    style.innerHTML = `
+      input, textarea, select {
+        font-size: 16px !important;
+      }
+      .scrollbar-hide::-webkit-scrollbar {
+        display: none;
+      }
+      .scrollbar-hide {
+        -ms-overflow-style: none;
+        scrollbar-width: none;
+      }
+    `;
+    document.head.appendChild(style);
+
     return () => {
       document.body.style.overflow = "auto";
       document.body.style.position = "static";
+      document.head.removeChild(style);
     };
   }, []);
 
@@ -329,10 +346,10 @@ PROTOCOLO:
         {/* Notch superior decorativo para pantallas grandes */}
         <div className="hidden md:block h-6 w-1/3 bg-[#1e293b] absolute top-0 left-1/2 -translate-x-1/2 rounded-b-2xl z-30"></div>
 
-        {/* Cabecera FIJA - Reducimos un poco el logo en pantallas muy pequeñas */}
+        {/* Cabecera FIJA */}
         <div className="bg-white px-6 pt-8 pb-3 flex flex-col z-10 border-b border-slate-50 shrink-0">
           <div className="flex justify-between items-center mb-3">
-            <MicroSmartLogo className="h-16 xs:h-20 w-auto flex items-center" />
+            <MicroSmartLogo className="h-[84px] w-auto flex items-center" />
             <div className="flex space-x-1">
               <button className="p-2 hover:bg-slate-100 rounded-full transition-colors relative">
                 <Bell size={20} className="text-slate-600" />
@@ -361,7 +378,7 @@ PROTOCOLO:
           </div>
         </div>
 
-        {/* Área de Contenido con SCROLL INTERNO - pb-24 para dejar espacio al dock */}
+        {/* Área de Contenido con SCROLL INTERNO */}
         <div className="flex-1 overflow-y-auto pb-24 px-6 pt-2 scrollbar-hide">
           {activeTab === "home" && (
             <div className="flex flex-col items-center space-y-8 py-8 animate-in fade-in zoom-in duration-500">
@@ -467,7 +484,7 @@ PROTOCOLO:
                     }`}
                   >
                     <div
-                      className={`max-w-[85%] px-4 py-3 rounded-2xl text-xs leading-relaxed shadow-sm ${
+                      className={`max-w-[85%] px-4 py-3 rounded-2xl text-base leading-relaxed shadow-sm ${
                         msg.role === "user"
                           ? "bg-[#00479b] text-white rounded-br-none"
                           : "bg-white text-slate-700 rounded-bl-none border border-slate-100"
@@ -505,7 +522,7 @@ PROTOCOLO:
                       e.key === "Enter" && handleSimulateVisitor()
                     }
                     placeholder="Escribe como visita..."
-                    className="w-full bg-slate-50 text-xs text-slate-800 rounded-xl pl-4 pr-12 py-3 focus:outline-none focus:ring-2 focus:ring-[#7bc100]/20 border border-slate-100"
+                    className="w-full bg-slate-50 text-base text-slate-800 rounded-xl pl-4 pr-12 py-3 focus:outline-none focus:ring-2 focus:ring-[#7bc100]/20 border border-slate-100"
                   />
                   <button
                     onClick={handleSimulateVisitor}
@@ -673,11 +690,11 @@ PROTOCOLO:
                     value={newName}
                     onChange={(e) => setNewName(e.target.value)}
                     placeholder="Nombre completo"
-                    className="w-full bg-slate-50 border border-slate-200 text-xs rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#7bc100]/20"
+                    className="w-full bg-slate-50 border border-slate-200 text-base text-slate-800 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#7bc100]/20"
                   />
                   <div className="flex space-x-2">
                     <div className="flex-1 bg-slate-50 border border-slate-200 rounded-lg flex items-center px-3">
-                      <span className="text-slate-400 text-xs font-bold border-r border-slate-200 pr-2 mr-2">
+                      <span className="text-slate-400 text-sm font-bold border-r border-slate-200 pr-2 mr-2">
                         +34
                       </span>
                       <input
@@ -685,7 +702,7 @@ PROTOCOLO:
                         value={newPhone}
                         onChange={(e) => setNewPhone(e.target.value)}
                         placeholder="Teléfono"
-                        className="bg-transparent text-xs w-full py-2.5 focus:outline-none"
+                        className="bg-transparent text-base text-slate-800 w-full py-2.5 focus:outline-none"
                       />
                     </div>
                     <button
@@ -702,7 +719,7 @@ PROTOCOLO:
                 <button className="w-full flex justify-between items-center p-2.5 hover:bg-slate-50 rounded-xl transition-all">
                   <div className="flex items-center space-x-3">
                     <Wifi size={18} className="text-slate-400" />
-                    <span className="text-xs font-bold text-slate-700">
+                    <span className="text-sm font-bold text-slate-700">
                       Configurar WiFi
                     </span>
                   </div>
@@ -728,7 +745,7 @@ PROTOCOLO:
           )}
         </div>
 
-        {/* Menú Inferior FIJO estilo Dock - Anclado a la parte inferior del contenedor seguro */}
+        {/* Menú Inferior FIJO estilo Dock */}
         <div className="absolute bottom-4 left-1/2 -translate-x-1/2 w-[92%] bg-white/95 backdrop-blur-xl border border-white/50 px-2 py-2 flex justify-between items-center z-20 rounded-[2rem] shadow-2xl">
           <NavItem
             active={activeTab === "home"}
