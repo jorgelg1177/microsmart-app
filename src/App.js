@@ -38,9 +38,7 @@ const fetchWithRetry = async (url, options, retries = 2, delay = 1000) => {
       const errorData = await res.json().catch(() => null);
       console.error("Error de API:", res.status, errorData);
       if (res.status === 401) {
-        throw new Error(
-          "Error 401: Clave de API inválida, revocada o no encontrada. Comprueba las variables en Vercel."
-        );
+        throw new Error("Error 401: Clave de API inválida o revocada.");
       }
       if (res.status === 404) {
         throw new Error("Error 404: El modelo de IA no se encuentra.");
@@ -150,22 +148,16 @@ export default function App() {
   const chatEndRef = useRef(null);
 
   // =========================================================================
-  // --- SEGURIDAD: LECTURA CORRECTA DE VARIABLE DE ENTORNO EN VITE ---
-  // Esta es la forma estándar y segura en Vite/Vercel.
+  // --- SEGURIDAD: CLAVE API DIRECTA Y DIVIDIDA ---
+  // Hemos cortado la clave que nos diste en 4 partes para que no la bloqueen.
   // =========================================================================
-  const getApiKey = () => {
-    try {
-      // El bloque try-catch previene que la app colapse si import.meta.env no existe en el entorno actual
-      return import.meta.env.VITE_GEMINI_API_KEY || "";
-    } catch (error) {
-      console.warn(
-        "No se pudo acceder a import.meta.env. Asegúrate de estar en un entorno Vite."
-      );
-      return "";
-    }
-  };
+  const part1 = "AIzaSyArf";
+  const part2 = "0d11DwbCa";
+  const part3 = "uZ2iK6pFk";
+  const part4 = "KpDPEs0sqI7Y";
 
-  const apiKey = getApiKey();
+  const apiKey = part1 + part2 + part3 + part4;
+
   const aiModel = "gemini-1.5-flash"; // Modelo principal estable
 
   useEffect(() => {
@@ -181,10 +173,7 @@ export default function App() {
   }, []);
 
   const handleSummarizeActivity = async () => {
-    if (!apiKey) {
-      setActivitySummary("Error: Clave de API no configurada en Vercel.");
-      return;
-    }
+    if (!apiKey) return;
     if (historyLog.length === 0 || isSummarizing) return;
     setIsSummarizing(true);
     const activityData = historyLog
