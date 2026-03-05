@@ -26,12 +26,9 @@ import {
   Volume2,
   Wand2,
   FileText,
-  CheckCircle2,
+  CheckCircle2, // Importado para la animación de ABIERTO
 } from "lucide-react";
 
-/**
- * Función de utilidad para llamadas a la API con reintentos automáticos
- */
 const fetchWithRetry = async (url, options, retries = 2, delay = 1000) => {
   try {
     const res = await fetch(url, options);
@@ -39,13 +36,13 @@ const fetchWithRetry = async (url, options, retries = 2, delay = 1000) => {
       const errorData = await res.json().catch(() => null);
       console.error("Error de API:", res.status, errorData);
       if (res.status === 401)
-        throw new Error("Error 401: Clave de API inválida.");
+        throw new Error("Error 401: Clave de API inválida o revocada.");
       if (res.status === 404)
         throw new Error("Error 404: El modelo de IA no se encuentra.");
       if (res.status === 400 || res.status === 403 || res.status === 429) {
         throw new Error(
           `Error de Google (${res.status}): ${
-            errorData?.error?.message || "Revisar clave"
+            errorData?.error?.message || "Revisar clave API o cuota"
           }`
         );
       }
@@ -53,7 +50,12 @@ const fetchWithRetry = async (url, options, retries = 2, delay = 1000) => {
     }
     return await res.json();
   } catch (error) {
-    if (retries > 0) {
+    if (
+      retries > 0 &&
+      !error.message.includes("Error 401") &&
+      !error.message.includes("Error 404") &&
+      !error.message.includes("Error de Google")
+    ) {
       await new Promise((r) => setTimeout(r, delay));
       return fetchWithRetry(url, options, retries - 1, delay * 2);
     }
@@ -111,7 +113,7 @@ export default function App() {
   const isProcessingRef = useRef(false);
   const isSpeakingRef = useRef(false);
   const recognitionRef = useRef(null);
-  const silenceTimerRef = useRef(null);
+  const silenceTimerRef = useRef(null); // Temporizador de silencio
   const apiHistoryRef = useRef([]);
   const authorizedNamesRef = useRef(authorizedNames);
   const chatEndRef = useRef(null);
@@ -148,9 +150,14 @@ export default function App() {
     if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
     if (isFluidModeRef.current) {
       silenceTimerRef.current = setTimeout(() => {
-        if (isFluidModeRef.current) {
+        if (
+          isFluidModeRef.current &&
+          !isProcessingRef.current &&
+          !isSpeakingRef.current
+        ) {
           speakResponse(
-            "Parece que no hay nadie. Me retiro, que tenga un excelente día."
+            "Parece que no hay nadie en la línea. Me retiro, que tenga un excelente día.",
+            true
           );
           setChatHistory((prev) => [
             ...prev,
@@ -160,9 +167,8 @@ export default function App() {
                 "Parece que no hay nadie. Me retiro, que tenga un excelente día. [Llamada finalizada por inactividad]",
             },
           ]);
-          stopFluidMode();
         }
-      }, 15000); // 15 Segundos de margen
+      }, 15000); // 15 segundos sin hablar
     }
   };
 
@@ -171,11 +177,11 @@ export default function App() {
     setIsFluidMode(false);
     setIsListening(false);
     isProcessingRef.current = false;
+    isSpeakingRef.current = false;
     if (recognitionRef.current) recognitionRef.current.stop();
     if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
   };
 
-  // --- OTRAS FUNCIONES (Resumen y Borradores) ---
   const handleSummarizeActivity = async () => {
     if (!apiKey) return setActivitySummary("Falta configurar la clave API.");
     if (historyLog.length === 0)
@@ -230,11 +236,12 @@ export default function App() {
     }
   };
 
-  // --- LÓGICA DE VOZ Y MICRÓFONO ---
+  // Se añade el parámetro shouldEndCall para colgar después de hablar
   const speakResponse = (text, shouldEndCall = false) => {
     if ("speechSynthesis" in window) {
       window.speechSynthesis.cancel();
       const cleanText = text.replace(/\[.*?\]/g, "").trim();
+
       if (!cleanText) {
         isProcessingRef.current = false;
         if (isFluidModeRef.current && !shouldEndCall) {
@@ -267,12 +274,11 @@ export default function App() {
       if (bestVoice) utterance.voice = bestVoice;
       utterance.rate = 1.0;
       utterance.pitch = 1.0;
-
       isSpeakingRef.current = true;
       utterance.onend = () => {
         isSpeakingRef.current = false;
         if (shouldEndCall) {
-          stopFluidMode(); // Cuelga al terminar de hablar si hay etiqueta FIN
+          stopFluidMode(); // Cuelga si la conversación terminó
         } else if (isFluidModeRef.current) {
           setTimeout(() => {
             startListening();
@@ -343,11 +349,10 @@ export default function App() {
       isFluidModeRef.current = true;
       setIsFluidMode(true);
       startListening();
-      resetSilenceTimer();
+      resetSilenceTimer(); // Iniciar temporizador
     }
   };
 
-  // --- EFECTOS VISUALES Y EVENTOS ---
   useEffect(() => {
     document.body.style.overflow = "hidden";
     document.body.style.position = "fixed";
@@ -375,7 +380,6 @@ export default function App() {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [chatHistory, isTyping]);
 
-  // --- GESTIÓN DE RESIDENTES (Pestaña Ajustes) ---
   const handleAddName = () => {
     if (newName.trim() && newPhone.trim()) {
       const formattedPhone = newPhone.startsWith("+")
@@ -396,12 +400,10 @@ export default function App() {
     );
   };
 
-  // --- ORDEN DE ABRIR PUERTA (Con animaciones recuperadas) ---
+  // --- ORDEN FÍSICA VÍA FIREBASE (CON TUS ANIMACIONES RESTAURADAS) ---
   const handleOpenDoor = async () => {
     if (doorStatus !== "idle") return;
-
-    // Animación 1: Procesando
-    setDoorStatus("opening");
+    setDoorStatus("opening"); // Estado 1: PROCESANDO AZUL
 
     try {
       if (firebaseUrl) {
@@ -412,8 +414,7 @@ export default function App() {
         });
       }
 
-      // Animación 2: Abierto
-      setDoorStatus("opened");
+      setDoorStatus("opened"); // Estado 2: ABIERTO CON CHECK VERDE
       setHistoryLog((prev) => [
         {
           id: Date.now(),
@@ -425,17 +426,17 @@ export default function App() {
         },
         ...prev,
       ]);
-
-      // Vuelve a reposo
-      setTimeout(() => setDoorStatus("idle"), 2500);
     } catch (error) {
-      console.error("Error al conectar con el hardware:", error);
-      alert("Error de conexión con Firebase. Revisa la URL.");
+      console.error("Error al conectar con la nube:", error);
+      alert(
+        "Error de conexión. Revisa que configuraste bien la URL de Firebase."
+      );
       setDoorStatus("idle");
+    } finally {
+      setTimeout(() => setDoorStatus("idle"), 2500); // Retorno a ABRIR VERDE
     }
   };
 
-  // --- INTELIGENCIA ARTIFICIAL (Conserje) ---
   const handleSimulateVisitor = async (textOverride) => {
     const textToSend = textOverride || chatInput;
     if (!textToSend.trim() || isTyping) return;
@@ -452,26 +453,30 @@ export default function App() {
 
     isProcessingRef.current = true;
     if (recognitionRef.current) recognitionRef.current.stop();
-
     setChatHistory((prev) => [...prev, { role: "user", content: textToSend }]);
     setChatInput("");
     setIsTyping(true);
 
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${aiModel}:generateContent?key=${apiKey}`;
     const allowedNamesList =
       authorizedNamesRef.current.length > 0
         ? authorizedNamesRef.current.map((p) => p.name).join(", ")
         : "Nadie";
 
-    const systemPrompt = `Eres el CONSERJE VIRTUAL de una vivienda (MicroSmart).
-REGLAS ESTRICTAS DE PRIVACIDAD Y SEGURIDAD:
-1. PRIVACIDAD ABSOLUTA: NUNCA, BAJO NINGUNA CIRCUNSTANCIA, digas un apellido o un nombre completo si el visitante no lo ha dicho primero. 
-   - CORRECTO: Visitante: "Busco a Jorge". Tú: "Entendido, ¿podría indicarme el apellido, por favor?"
-   - INCORRECTO: Visitante: "Busco a Jorge". Tú: "¿Busca a Jorge Loaiza?" (¡ESTO ESTÁ PROHIBIDO!).
-2. RÁPIDO PERO EDUCADO: Ve directo al grano, pero SIEMPRE saluda al iniciar ("Hola") y SIEMPRE despídete al terminar ("Gracias. Hasta luego."). Usa "por favor".
-3. FLEXIBILIDAD DE APELLIDOS: Para verificar a un propietario, basta con que el visitante diga el NOMBRE CORRECTO y AL MENOS UN APELLIDO CORRECTO de la lista.
-4. REGLA DE PACIENCIA: Si fallan el nombre/apellido, di rápido: "Aquí no reside nadie con ese nombre". ¡ESPERA SU RESPUESTA! No cortes la comunicación de golpe.
-5. FRASE PARA PAQUETES: Si verificas empresa y destinatario válido (nombre + al menos 1 apellido), di EXACTAMENTE: "Puede pasar. Deje el paquete dentro y cierre. Gracias. Hasta luego."
-6. RECHAZO: Si vas a denegar el paso definitivamente, hazlo amablemente.
+    // CEREBRO MEJORADO: PRIVACIDAD Y LÓGICA
+    const systemPrompt = `Eres el CONSERJE INTELIGENTE de la vivienda MicroSmart. Tu objetivo es gestionar las visitas con RAZONAMIENTO LÓGICO, SEGURIDAD y AMABILIDAD EXTREMA.
+
+REGLAS ESTRICTAS DE PRIVACIDAD (¡CRÍTICO!):
+1. NUNCA reveles el apellido o el nombre completo de un propietario si el visitante no lo ha dicho primero. 
+   - CORRECTO: Visitante: "Busco a Jorge". Tú: "Entendido, ¿podría indicarme su apellido, por favor?"
+   - INCORRECTO: Visitante: "Busco a Jorge". Tú: "¿Busca a Jorge Loaiza?". (¡ESTO ESTÁ TOTALMENTE PROHIBIDO!).
+2. NUNCA confirmes quién vive allí hasta que el visitante acierte nombre y apellido.
+
+INSTRUCCIONES DE COMPORTAMIENTO:
+3. ANÁLISIS DE INTENCIÓN Y LÓGICA: No seas un robot rígido. Si dicen "Para Karla León" y tu lista dice "Karla León Núñez", usa la lógica para saber que es la misma persona.
+4. AMABILIDAD Y MODALES: Ve directo al grano para no hacerles perder tiempo, pero saluda siempre al iniciar ("Hola") y despídete ("Gracias, hasta luego").
+5. PROTOCOLO DE PAQUETES: Si verificas empresa y destinatario (nombre + al menos 1 apellido de la lista), di EXACTAMENTE: "Puede pasar. Deje el paquete dentro y cierre. Gracias. Hasta luego."
+6. RECHAZO: Si vas a denegar el paso o no están autorizados, ofréceles amablemente guardar un recado.
 
 LISTA DE PROPIETARIOS AUTORIZADOS: [${allowedNamesList}].
 
@@ -484,13 +489,12 @@ C. RECHAZO DEFINITIVO: [ACCESO_DENEGADO | Motivo]
 Añade la etiqueta [FIN_CONVERSACION] ÚNICAMENTE cuando la conversación termine de forma natural:
 - Ya le has dado permiso para entrar (al repartidor).
 - Ya has guardado el recado y te despides.
-- El visitante se despide explícitamente (ej. "adiós", "vale", "me voy").
-- El visitante insiste 3 veces seguidas con nombres incorrectos.
+- El visitante se despide explícitamente.
+- El visitante falla 3 veces seguidas con el nombre.
 NUNCA uses [FIN_CONVERSACION] a la primera equivocación.`;
 
     let validApiHistory = [...apiHistoryRef.current];
     let combinedText = textToSend;
-
     if (
       validApiHistory.length > 0 &&
       validApiHistory[validApiHistory.length - 1].role === "user"
@@ -508,7 +512,7 @@ NUNCA uses [FIN_CONVERSACION] a la primera equivocación.`;
         body: JSON.stringify({
           systemInstruction: { parts: [{ text: systemPrompt }] },
           contents: contents,
-          generationConfig: { temperature: 0.2 },
+          generationConfig: { temperature: 0.3 },
         }),
       });
       let aiText = data.candidates?.[0]?.content?.parts?.[0]?.text;
@@ -533,12 +537,13 @@ NUNCA uses [FIN_CONVERSACION] a la primera equivocación.`;
         const empresa = abrirMatch[1].trim();
         const destinatario = abrirMatch[2].trim();
 
+        // --- LA IA MANDA LA ORDEN A FIREBASE ---
         if (firebaseUrl) {
           fetch(`${firebaseUrl}/puerta.json`, {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify("ABRIR"),
-          }).catch((e) => console.error("Error enviando señal:", e));
+          }).catch((e) => console.error("Error en nube:", e));
         }
 
         setHistoryLog((prev) => [
@@ -614,6 +619,8 @@ NUNCA uses [FIN_CONVERSACION] a la primera equivocación.`;
       ]);
 
       isProcessingRef.current = false;
+
+      // Llamamos a la voz pasándole si debe colgar al terminar
       speakResponse(finalAiText, endConversation);
     } catch (error) {
       setChatHistory((prev) => [
@@ -635,7 +642,6 @@ NUNCA uses [FIN_CONVERSACION] a la primera equivocación.`;
     <div className="fixed inset-0 w-screen h-[100dvh] bg-[#f3f4f6] flex items-center justify-center font-sans text-slate-900 overflow-hidden">
       <div className="w-full max-w-md h-full md:h-[92vh] md:max-h-[850px] md:rounded-[3rem] bg-white shadow-[0_20px_50px_rgba(0,0,0,0.1)] overflow-hidden flex flex-col relative md:border-[10px] border-[#1e293b]">
         <div className="hidden md:block h-6 w-1/3 bg-[#1e293b] absolute top-0 left-1/2 -translate-x-1/2 rounded-b-2xl z-30"></div>
-
         <div className="bg-white px-6 pt-8 pb-3 flex flex-col z-10 border-b border-slate-50 shrink-0">
           <div className="flex justify-between items-center mb-3">
             <MicroSmartLogo className="h-[84px] w-auto flex items-center" />
@@ -663,7 +669,6 @@ NUNCA uses [FIN_CONVERSACION] a la primera equivocación.`;
             </div>
           </div>
         </div>
-
         <div className="flex-1 overflow-y-auto pb-24 px-6 pt-2 scrollbar-hide">
           {activeTab === "home" && (
             <div className="flex flex-col items-center space-y-8 py-8 animate-in fade-in zoom-in duration-500">
@@ -684,7 +689,7 @@ NUNCA uses [FIN_CONVERSACION] a la primera equivocación.`;
                 <span>SISTEMA ONLINE</span>
               </div>
 
-              {/* EL BOTÓN RECUPERADO CON SUS 3 ANIMACIONES VISUALES */}
+              {/* BOTÓN CON ANIMACIONES RESTAURADAS */}
               <button
                 onClick={handleOpenDoor}
                 disabled={doorStatus !== "idle"}
@@ -728,7 +733,6 @@ NUNCA uses [FIN_CONVERSACION] a la primera equivocación.`;
               </button>
             </div>
           )}
-
           {activeTab === "ai" && (
             <div className="flex flex-col h-full animate-in slide-in-from-bottom-4 duration-500 bg-slate-50 -mx-6 rounded-t-[2.5rem] overflow-hidden border-t border-slate-200">
               <div className="p-5 pb-2 flex justify-between items-center bg-white/50 backdrop-blur-sm sticky top-0 z-10">
@@ -820,7 +824,6 @@ NUNCA uses [FIN_CONVERSACION] a la primera equivocación.`;
               </div>
             </div>
           )}
-
           {activeTab === "history" && (
             <div className="animate-in fade-in slide-in-from-right-4 duration-500 py-4">
               <div className="flex justify-between items-center mb-6">
@@ -913,7 +916,6 @@ NUNCA uses [FIN_CONVERSACION] a la primera equivocación.`;
               </div>
             </div>
           )}
-
           {activeTab === "messages" && (
             <div className="animate-in fade-in slide-in-from-right-4 duration-500 py-4">
               <h2 className="text-xl font-black text-slate-800 mb-6 tracking-tight">
@@ -985,8 +987,6 @@ NUNCA uses [FIN_CONVERSACION] a la primera equivocación.`;
               </div>
             </div>
           )}
-
-          {/* LA PESTAÑA DE AJUSTES RECUPERADA POR COMPLETO */}
           {activeTab === "settings" && (
             <div className="animate-in fade-in slide-in-from-right-4 duration-500 space-y-5 py-4">
               <h2 className="text-xl font-black text-slate-800 mb-6 tracking-tight">
@@ -1052,27 +1052,9 @@ NUNCA uses [FIN_CONVERSACION] a la primera equivocación.`;
                   </div>
                 </div>
               </div>
-              <div className="bg-white rounded-3xl p-5 shadow-sm border border-slate-100 space-y-1">
-                <button className="w-full flex justify-between items-center p-2.5 hover:bg-slate-50 rounded-xl transition-all">
-                  <div className="flex items-center space-x-3">
-                    <Wifi size={18} className="text-slate-400" />
-                    <span className="text-xs font-bold text-slate-700">
-                      Configurar WiFi del ESP32
-                    </span>
-                  </div>
-                  <ChevronRight size={16} className="text-slate-300" />
-                </button>
-                <button className="w-full flex justify-between items-center p-2.5 hover:bg-red-50 rounded-xl transition-all text-red-500">
-                  <div className="flex items-center space-x-3">
-                    <LogOut size={18} />
-                    <span className="text-xs font-bold">Desconectar App</span>
-                  </div>
-                </button>
-              </div>
             </div>
           )}
         </div>
-
         <div className="absolute bottom-4 left-1/2 -translate-x-1/2 w-[92%] bg-white/95 backdrop-blur-xl border border-white/50 px-2 py-2 flex justify-between items-center z-20 rounded-[2rem] shadow-2xl">
           <NavItem
             active={activeTab === "home"}
