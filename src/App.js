@@ -126,7 +126,6 @@ export default function App() {
   // Precargar las voces del sistema al iniciar
   useEffect(() => {
     if ("speechSynthesis" in window) {
-      // Fuerza al navegador a cargar la lista de voces
       window.speechSynthesis.getVoices();
       window.speechSynthesis.onvoiceschanged = () => {
         window.speechSynthesis.getVoices();
@@ -153,7 +152,6 @@ export default function App() {
       // Búsqueda exhaustiva de voces naturales para iOS y Android
       const voices = window.speechSynthesis.getVoices();
 
-      // Palabras clave de voces humanas de alta calidad en varios sistemas
       const preferredNames = [
         "google",
         "premium",
@@ -165,23 +163,20 @@ export default function App() {
         "network",
       ];
 
-      // 1. Intentar encontrar una voz "Premium" o de red explícita en español
       let bestVoice = voices.find(
         (v) =>
           (v.lang.startsWith("es-") || v.lang === "es") &&
           preferredNames.some((name) => v.name.toLowerCase().includes(name))
       );
 
-      // 2. Si no hay una con nombre premium, buscar una voz que use servicio online (suelen ser mucho mejores)
       if (!bestVoice) {
         bestVoice = voices.find(
           (v) =>
             (v.lang.startsWith("es-") || v.lang === "es") &&
-            v.localService === false // false indica que procesa en la nube
+            v.localService === false
         );
       }
 
-      // 3. Fallback final: cualquier voz en español
       if (!bestVoice) {
         bestVoice = voices.find(
           (v) => v.lang.startsWith("es-") || v.lang === "es"
@@ -192,16 +187,13 @@ export default function App() {
         utterance.voice = bestVoice;
       }
 
-      // Tono normal, ajustar rate un poco en móviles a veces ayuda a que suene menos trabado
       utterance.rate = 1.0;
       utterance.pitch = 1.0;
 
-      // Activamos el semáforo de que el conserje está hablando
       isSpeakingRef.current = true;
 
       utterance.onend = () => {
         isSpeakingRef.current = false;
-        // Solo reactivamos el micro si seguimos en modo fluido (si no se cortó por [FIN_CONVERSACION])
         if (isFluidModeRef.current) {
           setTimeout(startListening, 300);
         }
@@ -238,7 +230,6 @@ export default function App() {
 
       recognitionRef.current.onend = () => {
         setIsListening(false);
-        // BUCLE INFALIBLE: Si estamos en modo fluido, y NO estamos procesando datos, y el bot NO está hablando... reactivamos.
         if (
           isFluidModeRef.current &&
           !isProcessingRef.current &&
@@ -261,7 +252,6 @@ export default function App() {
       recognitionRef.current.onresult = (event) => {
         const transcript = event.results[0][0].transcript;
         if (transcript.trim()) {
-          // Bloqueamos el bucle temporalmente para pensar
           isProcessingRef.current = true;
           recognitionRef.current.stop();
           handleSimulateVisitor(transcript);
@@ -270,19 +260,15 @@ export default function App() {
 
       recognitionRef.current.onerror = (event) => {
         setIsListening(false);
-        // Si no detecta voz o hay un pequeño error, el evento onend se disparará
-        // y nuestro "BUCLE INFALIBLE" de arriba lo reiniciará automáticamente.
         if (
           event.error === "not-allowed" ||
           event.error === "service-not-allowed"
         ) {
-          // Solo apagamos todo si el usuario denegó permisos
           stopFluidMode();
         }
       };
     }
 
-    // Iniciamos la escucha si todos los semáforos están en verde
     if (
       isFluidModeRef.current &&
       !isProcessingRef.current &&
@@ -290,9 +276,7 @@ export default function App() {
     ) {
       try {
         recognitionRef.current.start();
-      } catch (e) {
-        // Ya estaba escuchando, ignoramos
-      }
+      } catch (e) {}
     }
   };
 
@@ -310,7 +294,6 @@ export default function App() {
     if (isFluidModeRef.current) {
       stopFluidMode();
     } else {
-      // HACK PARA MÓVILES: Desbloquear el motor de audio de iOS/Android al instante del toque.
       if ("speechSynthesis" in window) {
         const unlockUtterance = new SpeechSynthesisUtterance("");
         window.speechSynthesis.speak(unlockUtterance);
@@ -322,7 +305,6 @@ export default function App() {
     }
   };
 
-  // --- BLOQUEO DE ZOOM Y SCROLL ---
   useEffect(() => {
     document.body.style.overflow = "hidden";
     document.body.style.position = "fixed";
@@ -408,11 +390,9 @@ export default function App() {
     const textToSend = textOverride || chatInput;
     if (!textToSend.trim() || isTyping) return;
 
-    // Aseguramos que los semáforos de procesamiento estén encendidos
     isProcessingRef.current = true;
     if (recognitionRef.current) recognitionRef.current.stop();
 
-    // Actualizamos visualización
     setChatHistory((prev) => [...prev, { role: "user", content: textToSend }]);
     setChatInput("");
     setIsTyping(true);
@@ -424,22 +404,29 @@ export default function App() {
         ? authorizedNames.map((p) => p.name).join(", ")
         : "Nadie";
 
-    const systemPrompt = `Eres el conserje virtual de alta seguridad de una vivienda, creado por MicroSmart.
-Tu PERSONALIDAD: Amable, natural y educado. Mantén un tono formal y eficiente pero agradable.
-ESTÁS EN UNA CONVERSACIÓN FLUIDA POR VOZ. Sé breve y directo para que la charla no sea lenta.
+    // EL NUEVO CEREBRO: Riguroso, natural y estructurado.
+    const systemPrompt = `Eres el conserje virtual de alta seguridad de MicroSmart.
+Tu PERSONALIDAD: Amable, natural, profesional y muy riguroso con la seguridad. Actúa como un humano, haciendo preguntas paso a paso.
 
-REGLAS DE SEGURIDAD:
-1. NUNCA confirmes apellidos que el visitante NO diga.
-2. El visitante DEBE dar NOMBRE Y APELLIDO EXACTO.
-PERSONAS AUTORIZADAS: [${allowedNamesList}].
+MISIONES Y REGLAS DE SEGURIDAD CRÍTICAS:
+1. NUNCA asumas o confirmes apellidos que el visitante no haya dicho primero.
+2. NUNCA digas que la casa está vacía. Si el nombre no coincide, indica que se han equivocado.
+3. Ve paso a paso. No pidas toda la información de golpe, mantén una conversación fluida.
 
-PROTOCOLO:
-- REPARTIDOR: Debe decir EMPRESA y DESTINATARIO. Si es correcto, abre. Usa exactamente la etiqueta: [ABRIR_PUERTA | Empresa | Destinatario]
-- VISITA: Si valida nombre completo y no estás, ofrece recado. Usa exactamente la etiqueta: [MENSAJE_PARA | NombreAutorizado | texto]
-- RECHAZO: Si no coincide nombre, rechaza educadamente. Usa exactamente la etiqueta: [ACCESO_DENEGADO | Motivo]
+PASOS DE VERIFICACIÓN (Síguelos estrictamente):
+Paso 1: Si no se han presentado, pregunta con quién hablas y el motivo de la visita.
+Paso 2: Si es un REPARTIDOR, debes asegurarte de preguntarle de qué empresa viene y para quién es el paquete exactamente (Nombre y Apellido).
+Paso 3: Si es una VISITA, pregúntale a quién busca exactamente (Nombre y Apellido).
+Paso 4: Compara el destinatario con la lista de PERSONAS AUTORIZADAS: [${allowedNamesList}].
 
-FINALIZACIÓN (¡MUY IMPORTANTE!):
-Si la interacción ha terminado por cualquier motivo (ya abriste la puerta, tomaste el recado, o el visitante se despide), DEBES incluir EXACTAMENTE la etiqueta: [FIN_CONVERSACION] al final de tu mensaje para apagar el sistema.`;
+ACCIONES FINALES (Usa estas etiquetas SOLO cuando hayas verificado toda la información rigurosamente):
+- Si es REPARTIDOR y el destinatario coincide en la lista: Dile que le abres y usa la etiqueta [ABRIR_PUERTA | Empresa | Destinatario]
+- Si es VISITA y el destinatario coincide en la lista: Dile que le vas a dejar un recado y usa la etiqueta [MENSAJE_PARA | NombreAutorizado | texto]
+- Si NO coincide el nombre o es comercial: Rechaza amablemente y usa la etiqueta [ACCESO_DENEGADO | Motivo]
+
+¡MUY IMPORTANTE SOBRE EL MICRÓFONO!:
+SOLO añade la etiqueta [FIN_CONVERSACION] al final de tu mensaje SI acabas de usar una de las Acciones Finales (ABRIR_PUERTA, MENSAJE_PARA, ACCESO_DENEGADO) o si el usuario se despide explícitamente. 
+MIENTRAS ESTÉS HACIENDO PREGUNTAS (ej. preguntando la empresa o el apellido), NUNCA uses [FIN_CONVERSACION], para que la conversación siga abierta y fluida.`;
 
     const newApiMsg = { role: "user", parts: [{ text: textToSend }] };
 
@@ -475,12 +462,10 @@ Si la interacción ha terminado por cualquier motivo (ya abriste la puerta, toma
       let actionType = null;
       let endConversation = false;
 
-      // Evaluamos las etiquetas de acción
       if (aiText.includes("[ABRIR_PUERTA")) actionType = "opened";
       else if (aiText.includes("[MENSAJE_PARA")) actionType = "message_saved";
       else if (aiText.includes("[ACCESO_DENEGADO")) actionType = "denied";
 
-      // Evaluamos si el conserje da por finalizada la charla
       if (aiText.includes("[FIN_CONVERSACION]")) {
         endConversation = true;
       }
@@ -491,11 +476,8 @@ Si la interacción ha terminado por cualquier motivo (ya abriste la puerta, toma
         { role: "ai", content: finalAiText, action: actionType },
       ]);
 
-      // Apagamos semáforo de procesar antes de hablar
       isProcessingRef.current = false;
 
-      // Si la IA decidió terminar la conversación, apagamos el modo fluido en la UI
-      // La voz se reproducirá pero el micrófono NO se volverá a abrir al terminar.
       if (endConversation) {
         isFluidModeRef.current = false;
         setIsFluidMode(false);
@@ -514,7 +496,7 @@ Si la interacción ha terminado por cualquier motivo (ya abriste la puerta, toma
 
       isProcessingRef.current = false;
       if (isFluidModeRef.current) {
-        setTimeout(startListening, 1500); // Reintenta escuchar tras un error leve
+        setTimeout(startListening, 1500);
       }
     } finally {
       setIsTyping(false);
@@ -937,7 +919,7 @@ Si la interacción ha terminado por cualquier motivo (ya abriste la puerta, toma
                   MICROSMART.ES
                 </p>
                 <p className="text-[8px] text-slate-300 font-bold mt-1 uppercase">
-                  Control Inteligente v1.6
+                  Control Inteligente v1.7
                 </p>
               </div>
             </div>
