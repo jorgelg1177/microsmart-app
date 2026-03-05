@@ -140,9 +140,19 @@ export default function App() {
   const [apiHistory, setApiHistory] = useState([]);
   const chatEndRef = useRef(null);
 
-  // --- SEGURIDAD: CLAVE API OCULTA ---
-  // Pega temporalmente tu clave API aquí dentro de las comillas para hacer las pruebas en este entorno.
-  const apiKey = "";
+  // --- SEGURIDAD: CLAVE API OCULTA DEFINITIVA ---
+  // Esta línea lee la clave secreta directamente de Vercel. Google no la bloqueará más.
+  let apiKey = "";
+  try {
+    apiKey = import.meta.env?.VITE_GEMINI_API_KEY || "";
+  } catch (e) {
+    try {
+      apiKey =
+        process.env.VITE_GEMINI_API_KEY ||
+        process.env.REACT_APP_GEMINI_API_KEY ||
+        "";
+    } catch (err) {}
+  }
 
   // Sincronizar referencias para eventos de voz
   useEffect(() => {
@@ -397,7 +407,7 @@ export default function App() {
         {
           role: "ai",
           content:
-            "⚠️ Sistema: No se ha configurado la clave API en las variables de entorno de Vercel/CodeSandbox. Revisa la Guía de Lanzamiento.",
+            "⚠️ Sistema: La aplicación se ha actualizado. Por favor, realiza el despliegue en Vercel para usar la clave segura.",
         },
       ]);
       setIsTyping(false);
