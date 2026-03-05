@@ -94,8 +94,8 @@ export default function App() {
   const [activeTab, setActiveTab] = useState("home");
   const [doorStatus, setDoorStatus] = useState("idle");
   const [authorizedNames, setAuthorizedNames] = useState([
-    { name: "Jorge Apellido", phone: "+34 600 111 222" },
-    { name: "Karla Apellido", phone: "+34 600 333 444" },
+    { name: "Jorge", phone: "+34 600 111 222" },
+    { name: "Karla León Núñez", phone: "+34 600 333 444" },
   ]);
   const [newName, setNewName] = useState("");
   const [newPhone, setNewPhone] = useState("");
@@ -122,13 +122,14 @@ export default function App() {
   const [chatHistory, setChatHistory] = useState([
     {
       role: "ai",
-      content: "Conserje automático de MicroSmart. ¿A quién busca?",
+      content:
+        "Hola, soy el conserje automático de MicroSmart. ¿En qué le puedo ayudar?",
     },
   ]);
   const [apiHistory, setApiHistory] = useState([]);
 
   // =========================================================================
-  // --- CONFIGURACIÓN DE IA (LEYENDO VARIABLE DEL ENTORNO .ENV) ---
+  // --- CONFIGURACIÓN DE IA ---
   // =========================================================================
   const apiKey = process.env.REACT_APP_GEMINI_API_KEY;
   const aiModel = "gemini-2.5-flash";
@@ -411,20 +412,27 @@ export default function App() {
 
     const systemPrompt = `Eres el CONSERJE VIRTUAL de una vivienda (MicroSmart).
 REGLAS ESTRICTAS:
-1. ULTRA RÁPIDO: Los repartidores tienen prisa. Habla con frases de máximo 10-15 palabras. Ve directo al grano.
-2. PRIVACIDAD: NUNCA digas apellidos. Si dicen un nombre, pregunta rápido: "¿Me indica el apellido?".
-3. REGLA DEL SILENCIO: No digas si hay alguien ni ofrezcas recados HASTA confirmar nombre y apellido exactos de la lista. Si se equivocan de nombre, di rápido: "Se ha equivocado de vivienda".
-4. FRASE PARA PAQUETES: Si verificas empresa y destinatario correcto, di EXACTAMENTE y nada más: "Puede pasar. Deje el paquete dentro y cierre. Gracias."
-5. CERO RODEOS: No saludes de nuevo, no des explicaciones largas.
+1. RÁPIDO PERO EDUCADO: Habla con frases de máximo 10-15 palabras. Ve directo al grano, pero SIEMPRE saluda al iniciar ("Hola") y SIEMPRE despídete al terminar ("Gracias. Hasta luego."). Usa "por favor".
+2. PRIVACIDAD: NUNCA digas apellidos. Si dicen un nombre de pila, pregunta rápido: "¿Me indica el apellido, por favor?".
+3. FLEXIBILIDAD DE APELLIDOS (¡IMPORTANTE!): Para verificar a un propietario, basta con que el visitante diga el NOMBRE CORRECTO y AL MENOS UN APELLIDO CORRECTO de la lista. (Ejemplo: Si en la lista está "Karla León Núñez", debes aceptar como válido "Karla León", "Karla Núñez" o "Karla León Núñez").
+4. REGLA DE PACIENCIA: Si fallan el nombre/apellido, di rápido: "Aquí no reside nadie con ese nombre". ¡ESPERA SU RESPUESTA! No cortes la comunicación de golpe, dales oportunidad de corregirse.
+5. FRASE PARA PAQUETES: Si verificas empresa y destinatario válido (nombre + al menos 1 apellido), di EXACTAMENTE: "Puede pasar. Deje el paquete dentro y cierre. Gracias. Hasta luego."
+6. RECHAZO: Si vas a denegar el paso definitivamente, hazlo amablemente.
 
 LISTA DE PROPIETARIOS AUTORIZADOS: [${allowedNamesList}].
 
 ETIQUETAS SECRETAS (Añade una al final según corresponda):
 A. REPARTIDOR VERIFICADO: [ABRIR_PUERTA | Empresa | Destinatario]
 B. VISITA VERIFICADA (ofrece recado rápido): [MENSAJE_PARA | NombreAutorizado | texto]
-C. RECHAZO (Mal nombre o sospechoso): [ACCESO_DENEGADO | Motivo]
+C. RECHAZO DEFINITIVO: [ACCESO_DENEGADO | Motivo]
 
-Añade [FIN_CONVERSACION] solo al terminar definitivamente.`;
+¡REGLA DE COLGAR LA LLAMADA! (MUY IMPORTANTE):
+Añade la etiqueta [FIN_CONVERSACION] ÚNICAMENTE cuando ocurra una de estas cosas:
+- Ya le has dado permiso para entrar (al repartidor).
+- Ya has guardado el recado y te despides.
+- El visitante se despide explícitamente (ej. "adiós", "vale", "me voy").
+- El visitante insiste 3 veces seguidas con nombres que no coinciden en nada.
+NUNCA uses [FIN_CONVERSACION] a la primera equivocación.`;
 
     let validApiHistory = [...apiHistoryRef.current];
     let combinedText = textToSend;
@@ -497,8 +505,11 @@ Añade [FIN_CONVERSACION] solo al terminar definitivamente.`;
             content: textoMensaje,
             time: getCurrentTime(),
             phone:
-              authorizedNamesRef.current.find((p) => p.name === destinatario)
-                ?.phone || "Desconocido",
+              authorizedNamesRef.current.find(
+                (p) =>
+                  p.name === destinatario ||
+                  p.name.includes(destinatario.split(" ")[0])
+              )?.phone || "Desconocido",
           },
           ...prev,
         ]);
