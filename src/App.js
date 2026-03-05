@@ -367,7 +367,11 @@ export default function App() {
     setChatInput("");
     setIsTyping(true);
 
-    const apiKey = "AIzaSyAHhKeJMyA-fSpmVXh_yhf5xAVoKwW22tM";
+    // ==========================================
+    // PEGA TU NUEVA CLAVE AQUÍ ABAJO (sk- o AIza...)
+    // ==========================================
+    const apiKey = "AIzaSyBD1Ia5FRn8XwZkp4jFhx9q_f48SWHyh6A";
+
     const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
     const allowedNamesList =
       authorizedNames.length > 0
@@ -382,6 +386,19 @@ REGLAS:
 3. Lista de autorizados: [${allowedNamesList}].
 4. ACCIONES: [ABRIR_PUERTA | Empresa | Destinatario] o [MENSAJE_PARA | NombreAutorizado | texto] o [ACCESO_DENEGADO | Motivo].
 5. FINALIZACIÓN: Añade exactamente [FIN_CONVERSACION] al final de tu mensaje SOLO si ya abriste, tomaste recado o rechazaste. MIENTRAS preguntes datos, NO lo uses.`;
+
+    if (!apiKey) {
+      setChatHistory((prev) => [
+        ...prev,
+        {
+          role: "ai",
+          content: "⚠️ Por favor, pega tu nueva API Key en el código.",
+        },
+      ]);
+      setIsTyping(false);
+      isProcessingRef.current = false;
+      return;
+    }
 
     const newApiMsg = { role: "user", parts: [{ text: textToSend }] };
     let validApiHistory = [...apiHistory];
