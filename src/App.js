@@ -129,10 +129,14 @@ export default function App() {
   const [apiHistory, setApiHistory] = useState([]);
 
   // =========================================================================
-  // --- CONFIGURACIÓN DE IA ---
+  // --- CONFIGURACIÓN DE IA Y ESP32 ---
   // =========================================================================
   const apiKey = process.env.REACT_APP_GEMINI_API_KEY;
   const aiModel = "gemini-2.5-flash";
+
+  // ⚠️ CAMBIA ESTO POR LA IP QUE TE DE EL ARDUINO EN EL MONITOR SERIE:
+  const esp32IP = "http://192.168.1.145";
+  // =========================================================================
 
   useEffect(() => {
     authorizedNamesRef.current = authorizedNames;
@@ -359,10 +363,13 @@ export default function App() {
     );
   };
 
-  const handleOpenDoor = () => {
+  // --- FUNCIÓN QUE ENVÍA LA ORDEN FÍSICA AL ESP32 MANUALMENTE ---
+  const handleOpenDoor = async () => {
     if (doorStatus !== "idle") return;
     setDoorStatus("opening");
-    setTimeout(() => {
+
+    try {
+      await fetch(`${esp32IP}/abrir`);
       setDoorStatus("opened");
       setHistoryLog((prev) => [
         {
@@ -375,8 +382,14 @@ export default function App() {
         },
         ...prev,
       ]);
+    } catch (error) {
+      console.error("Error al conectar con el hardware:", error);
+      alert(
+        "No se pudo conectar con el interfono. ¿Estás en la misma red WiFi que el ESP32?"
+      );
+    } finally {
       setTimeout(() => setDoorStatus("idle"), 2000);
-    }, 1500);
+    }
   };
 
   const handleSimulateVisitor = async (textOverride) => {
@@ -386,11 +399,7 @@ export default function App() {
     if (!apiKey) {
       setChatHistory((prev) => [
         ...prev,
-        {
-          role: "ai",
-          content:
-            "⚠️ Sistema: No se detecta la clave API (revisa tu archivo .env o configuración de Vercel).",
-        },
+        { role: "ai", content: "⚠️ Sistema: No se detecta la clave API." },
       ]);
       setIsTyping(false);
       isProcessingRef.current = false;
@@ -478,6 +487,13 @@ NUNCA uses [FIN_CONVERSACION] a la primera equivocación.`;
         actionType = "opened";
         const empresa = abrirMatch[1].trim();
         const destinatario = abrirMatch[2].trim();
+
+        // --- LA IA MANDA LA ORDEN FÍSICA AL ESP32 ---
+        fetch(`${esp32IP}/abrir`).catch((e) =>
+          console.error("Error enviando señal al ESP32:", e)
+        );
+        // --------------------------------------------
+
         setHistoryLog((prev) => [
           {
             id: Date.now(),
