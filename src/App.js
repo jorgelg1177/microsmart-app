@@ -368,7 +368,7 @@ export default function App() {
     setIsTyping(true);
 
     // ==========================================
-    // PEGA TU NUEVA CLAVE AQUÍ ABAJO (sk- o AIza...)
+    // API KEY INTEGRADA
     // ==========================================
     const apiKey = "AIzaSyBD1Ia5FRn8XwZkp4jFhx9q_f48SWHyh6A";
 
@@ -378,22 +378,31 @@ export default function App() {
         ? authorizedNames.map((p) => p.name).join(", ")
         : "Nadie";
 
-    const systemPrompt = `Eres el conserje virtual de alta seguridad de MicroSmart.
-Tu PERSONALIDAD: Amable, natural, profesional y muy riguroso.
-REGLAS:
-1. NUNCA asumas apellidos que el visitante no haya dicho.
-2. PASOS: Pregunta quién es y motivo -> Si es repartidor: Empresa y destinatario exacto -> Si es visita: A quién busca exacto.
-3. Lista de autorizados: [${allowedNamesList}].
-4. ACCIONES: [ABRIR_PUERTA | Empresa | Destinatario] o [MENSAJE_PARA | NombreAutorizado | texto] o [ACCESO_DENEGADO | Motivo].
-5. FINALIZACIÓN: Añade exactamente [FIN_CONVERSACION] al final de tu mensaje SOLO si ya abriste, tomaste recado o rechazaste. MIENTRAS preguntes datos, NO lo uses.`;
+    const systemPrompt = `Eres el conserje virtual de alta seguridad de MicroSmart. 
+Tu misión es gestionar el acceso a la vivienda de forma profesional, educada y extremadamente segura.
+
+REGLAS CRÍTICAS DE INTELIGENCIA:
+1. MEMORIA ACTIVA: Lee todo el historial antes de responder. Si el visitante ya te ha dicho quién es, de qué empresa viene o para quién es el paquete, NO se lo vuelvas a preguntar. Reconoce la información inmediatamente y pasa al siguiente punto.
+2. SEGURIDAD: Nunca confirmes nombres o apellidos de los propietarios si el visitante no los dice primero correctamente.
+3. NATURALIDAD: Habla como un conserje humano de lujo. No sigas un guion rígido. Si el usuario te da toda la información de golpe ("Soy Juan de Amazon para Carlos García"), procede directamente a la acción.
+
+LISTA DE PERSONAS AUTORIZADAS (PROPIETARIOS): [${allowedNamesList}].
+
+PROTOCOLO DE ACCIÓN:
+A. REPARTIDORES: Debes conocer la Empresa Y el Destinatario (Nombre y Apellido). Si coinciden con la lista, abre.
+   Acción: [ABRIR_PUERTA | Empresa | Destinatario]
+B. VISITAS PERSONALES: Debes conocer quién es Y a quién busca. Si el anfitrión está en la lista, dile que no puede atenderle pero ofrece dejar un recado.
+   Acción: [MENSAJE_PARA | NombreAutorizado | texto]
+C. RECHAZO: Si no hay coincidencia clara o es un comercial no deseado, deniega amablemente.
+   Acción: [ACCESO_DENEGADO | Motivo]
+
+ETIQUETA DE CIERRE:
+Solo añade [FIN_CONVERSACION] al final de tu mensaje si acabas de ejecutar una acción final (ABRIR_PUERTA, MENSAJE_PARA o ACCESO_DENEGADO). Si aún estás conversando o pidiendo datos, NO lo uses.`;
 
     if (!apiKey) {
       setChatHistory((prev) => [
         ...prev,
-        {
-          role: "ai",
-          content: "⚠️ Por favor, pega tu nueva API Key en el código.",
-        },
+        { role: "ai", content: "⚠️ Error de configuración de llave." },
       ]);
       setIsTyping(false);
       isProcessingRef.current = false;
@@ -452,7 +461,7 @@ REGLAS:
     } catch (error) {
       setChatHistory((prev) => [
         ...prev,
-        { role: "ai", content: `⚠️ Error: ${error.message}` },
+        { role: "ai", content: `⚠️ Error de conexión: ${error.message}` },
       ]);
       isProcessingRef.current = false;
       if (isFluidModeRef.current) setTimeout(startListening, 1500);
