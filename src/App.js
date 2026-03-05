@@ -149,33 +149,20 @@ export default function App() {
   const [apiHistory, setApiHistory] = useState([]);
   const chatEndRef = useRef(null);
 
-  // --- SEGURIDAD: BÚSQUEDA EXHAUSTIVA DE CLAVE API ---
-  // IMPORTANTE: Si CodeSandbox muestra un warning amarillo sobre "import.meta", IGNÓRALO.
-  // Es necesario escribirlo exactamente así para que Vercel inyecte tu clave correctamente.
+  // =========================================================================
+  // --- SEGURIDAD: LECTURA CORRECTA DE VARIABLE DE ENTORNO EN VITE ---
+  // Esta es la forma estándar y segura en Vite/Vercel.
+  // =========================================================================
   const getApiKey = () => {
-    let key = "";
     try {
-      // Vite exige esta sintaxis exacta para reemplazar la variable al compilar.
-      key = import.meta.env.VITE_GEMINI_API_KEY;
-    } catch (e) {
-      // Ignorar error si no estamos en entorno Vite
+      // El bloque try-catch previene que la app colapse si import.meta.env no existe en el entorno actual
+      return import.meta.env.VITE_GEMINI_API_KEY || "";
+    } catch (error) {
+      console.warn(
+        "No se pudo acceder a import.meta.env. Asegúrate de estar en un entorno Vite."
+      );
+      return "";
     }
-
-    if (!key || key === "undefined" || key === "null") {
-      try {
-        key =
-          process.env.VITE_GEMINI_API_KEY ||
-          process.env.REACT_APP_GEMINI_API_KEY ||
-          "";
-      } catch (e) {}
-    }
-
-    return key &&
-      typeof key === "string" &&
-      key !== "undefined" &&
-      key !== "null"
-      ? key.trim()
-      : "";
   };
 
   const apiKey = getApiKey();
@@ -195,9 +182,7 @@ export default function App() {
 
   const handleSummarizeActivity = async () => {
     if (!apiKey) {
-      setActivitySummary(
-        "Error: Clave de API no configurada correctamente en Vercel."
-      );
+      setActivitySummary("Error: Clave de API no configurada en Vercel.");
       return;
     }
     if (historyLog.length === 0 || isSummarizing) return;
@@ -432,8 +417,7 @@ export default function App() {
         ...prev,
         {
           role: "ai",
-          content:
-            "⚠️ Sistema: No se detecta la clave API. Por favor, asegúrate de haber actualizado el código en Vercel (Redeploy).",
+          content: "⚠️ Sistema: No se detecta la clave API. Revisa el código.",
         },
       ]);
       setIsTyping(false);
