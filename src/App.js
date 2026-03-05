@@ -300,7 +300,8 @@ export default function App() {
     setIsTyping(true);
 
     const apiKey = "AIzaSyDVE6h1s-PPAWXvYg-t_f9kf6y0YfskQRs";
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
+    // CAMBIO IMPORTANTE: Actualizado al modelo principal gemini-2.5-flash
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
     const allowedNamesList =
       authorizedNames.length > 0
         ? authorizedNames.map((p) => p.name).join(", ")
