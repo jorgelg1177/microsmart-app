@@ -19,6 +19,8 @@ import {
   UserPlus,
   MessageSquare,
   PhoneForwarded,
+  Menu,
+  LogOut,
 } from "lucide-react";
 
 // Implementación de Backoff Exponencial para las llamadas a la API
@@ -36,7 +38,29 @@ const fetchWithRetry = async (url, options, retries = 5, delay = 1000) => {
   }
 };
 
-// Helper para obtener la hora actual formateada
+/**
+ * COMPONENTE DEL LOGO:
+ * Importante: Renombra tu imagen en la carpeta 'public' a 'logo.png'
+ * para evitar errores con los espacios en blanco en la URL publicada.
+ */
+const MicroSmartLogo = ({ className }) => (
+  <div className={className}>
+    <img
+      src="/logo.png"
+      alt="MicroSmart Logo"
+      className="h-full w-auto object-contain"
+      onError={(e) => {
+        // Respaldo visual si la imagen no carga (por nombre incorrecto o ruta)
+        e.target.style.display = "none";
+        e.target.nextSibling.style.display = "block";
+      }}
+    />
+    <span className="hidden font-black text-xl tracking-tighter text-slate-800">
+      MICRO<span className="text-[#7bc100]">SMART</span>
+    </span>
+  </div>
+);
+
 const getCurrentTime = () => {
   const now = new Date();
   return now.toLocaleTimeString("es-ES", {
@@ -47,9 +71,8 @@ const getCurrentTime = () => {
 
 export default function App() {
   const [activeTab, setActiveTab] = useState("home");
-  const [doorStatus, setDoorStatus] = useState("idle"); // idle, opening, opened
+  const [doorStatus, setDoorStatus] = useState("idle");
 
-  // Estado para las personas autorizadas en la casa
   const [authorizedNames, setAuthorizedNames] = useState([
     { name: "Carlos García", phone: "+34 600 111 222" },
     { name: "María López", phone: "+34 600 333 444" },
@@ -57,7 +80,6 @@ export default function App() {
   const [newName, setNewName] = useState("");
   const [newPhone, setNewPhone] = useState("");
 
-  // Estados de Registro de Actividad y Mensajes
   const [historyLog, setHistoryLog] = useState([
     {
       id: 1,
@@ -70,7 +92,6 @@ export default function App() {
   ]);
   const [messagesList, setMessagesList] = useState([]);
 
-  // Estados para el Simulador IA de Gemini
   const [chatInput, setChatInput] = useState("");
   const [isTyping, setIsTyping] = useState(false);
   const [chatHistory, setChatHistory] = useState([
@@ -82,12 +103,10 @@ export default function App() {
   ]);
   const chatEndRef = useRef(null);
 
-  // Auto-scroll del chat
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [chatHistory, isTyping]);
 
-  // Manejadores para añadir o quitar personas autorizadas
   const handleAddName = () => {
     if (
       newName.trim() &&
@@ -114,15 +133,12 @@ export default function App() {
     );
   };
 
-  // Simular la apertura de la puerta (manual)
   const handleOpenDoor = () => {
     if (doorStatus !== "idle") return;
     setDoorStatus("opening");
 
     setTimeout(() => {
       setDoorStatus("opened");
-
-      // Registrar apertura manual
       setHistoryLog((prev) => [
         {
           id: Date.now(),
@@ -141,7 +157,6 @@ export default function App() {
     }, 1500);
   };
 
-  // Función que se comunica con la API de Gemini
   const handleSimulateVisitor = async () => {
     if (!chatInput.trim() || isTyping) return;
 
@@ -150,32 +165,28 @@ export default function App() {
     setChatInput("");
     setIsTyping(true);
 
-    const apiKey = ""; // Clave API proporcionada por el entorno
+    const apiKey = "";
     const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
 
     const allowedNamesList =
       authorizedNames.length > 0
         ? authorizedNames.map((p) => p.name).join(", ")
-        : "Nadie (la casa está vacía temporalmente)";
+        : "Nadie";
 
-    // System Prompt Dinámico e Inteligente (BLINDADO CON ZERO TRUST)
     const systemPrompt = `Eres el conserje virtual de alta seguridad de una vivienda, creado por MicroSmart.
-Tu PERSONALIDAD: Eres un profesional de seguridad educado, cordial y directo. Eres amable pero mantienes un tono formal y eficiente.
+Tu PERSONALIDAD: Amable, natural y educado. Mantén un tono formal y eficiente pero agradable.
 
-REGLAS DE SEGURIDAD CRÍTICAS (DE OBLIGADO CUMPLIMIENTO):
-1. ZERO LEAKAGE (CERO FUGAS): NUNCA pronuncies, escribas o confirmes apellidos o nombres que el visitante NO haya dicho primero. Solo usa las palabras que el visitante te da.
-2. VALIDACIÓN DE IDENTIDAD: El visitante DEBE dar el NOMBRE Y APELLIDO EXACTO de la persona que busca. Si solo dicen el nombre de pila, DETÉN el proceso y pregunta: "Disculpe, por motivos de seguridad, ¿me podría indicar también el apellido?".
-3. OCULTACIÓN DE OCUPACIÓN: NUNCA digas que la casa está vacía, que no hay nadie, o que la persona "no está", a menos que el visitante haya dado el NOMBRE Y APELLIDO CORRECTO de una persona autorizada. Si el nombre no coincide, rechaza el acceso diciendo que se ha equivocado de casa.
+REGLAS DE SEGURIDAD CRÍTICAS:
+1. NUNCA confirmes apellidos o nombres que el visitante NO haya dicho primero.
+2. El visitante DEBE dar NOMBRE Y APELLIDO EXACTO de la persona que busca. Si solo dicen el nombre de pila, pregunta el apellido.
+3. NUNCA digas que la casa está vacía. Si el nombre no coincide, indica que se han equivocado de casa.
 
-PERSONAS AUTORIZADAS ACTUALMENTE: [${allowedNamesList}].
+PERSONAS AUTORIZADAS: [${allowedNamesList}].
 
-PROTOCOLO DE ACTUACIÓN PASO A PASO:
-- PASO 1 (RECOPILAR): Escucha lo que quiere. Si es un repartidor, asegúrate de que te diga de qué EMPRESA DE REPARTO viene y el NOMBRE Y APELLIDO completos del destinatario. Si falta algo, pregúntalo.
-- PASO 2 (EVALUAR): Solo cuando tengas todos los datos completos, compáralos con la lista de PERSONAS AUTORIZADAS.
-- PASO 3A (REPARTIDOR VALIDADO): Si trae paquete de una EMPRESA para un Nombre y Apellido AUTORIZADO, dile: "Le abro la puerta, por favor ingrese y deje el paquete en un sitio seguro y al salir cierre bien la puerta". Añade EXACTAMENTE esta etiqueta al final: [ABRIR_PUERTA | NombreEmpresa | NombreCompletoAutorizado]
-- PASO 3B (VISITA VALIDADA): Si busca a un Nombre y Apellido AUTORIZADO, AHORA SÍ puedes decirle que esa persona no se encuentra en este momento y ofrecerle amablemente tomar un recado.
-- PASO 4 (TOMAR RECADO): Si te dicta un mensaje, confirma que lo guardarás. Añade EXACTAMENTE esta etiqueta al final: [MENSAJE_PARA | NombreCompletoAutorizado | texto del recado]
-- PASO 5 (DENEGACIONES): Si es comercial o no acierta el nombre, recházalos con educación y firmeza. Añade EXACTAMENTE esta etiqueta al final: [ACCESO_DENEGADO | Motivo del rechazo]`;
+PROTOCOLO:
+- REPARTIDOR: Debe decir EMPRESA y NOMBRE COMPLETO del destinatario. Si es correcto, dile: "Le abro la puerta, por favor ingrese y deje el paquete en un sitio seguro y al salir cierre bien la puerta". Etiqueta: [ABRIR_PUERTA | Empresa | Destinatario]
+- VISITA: Si valida el nombre completo y la persona no está, ofrece tomar recado. Etiqueta: [MENSAJE_PARA | NombreAutorizado | texto]
+- RECHAZO: Si es comercial o error de nombre, rechaza educadamente. Etiqueta: [ACCESO_DENEGADO | Motivo]`;
 
     const contents = [
       ...chatHistory.filter((m) => m.role !== "system"),
@@ -201,20 +212,13 @@ PROTOCOLO DE ACTUACIÓN PASO A PASO:
         data.candidates?.[0]?.content?.parts?.[0]?.text ||
         "Error al procesar la respuesta.";
 
-      // PARSEO ROBUSTO DE ETIQUETAS OCULTAS
-      let didOpen = false;
       let actionType = null;
       const currentTime = getCurrentTime();
 
-      // 1. Detección de Apertura
       if (aiText.includes("[ABRIR_PUERTA")) {
-        didOpen = true;
         actionType = "opened";
-
         let company = "Desconocida";
         let recipient = "Desconocido";
-
-        // Extraer Empresa y Destinatario separados por el símbolo "|"
         const openMatch = aiText.match(
           /\[ABRIR_PUERTA\s*\|\s*(.*?)\s*\|\s*(.*?)\]/i
         );
@@ -222,32 +226,24 @@ PROTOCOLO DE ACTUACIÓN PASO A PASO:
           company = openMatch[1].trim();
           recipient = openMatch[2].trim();
         }
-
-        // Ejecuta botón físico
         setDoorStatus("opening");
         setTimeout(() => setDoorStatus("opened"), 1500);
         setTimeout(() => setDoorStatus("idle"), 3500);
-
-        // GUARDA EN EL HISTORIAL
         setHistoryLog((prev) => [
           {
             id: Date.now(),
             type: "ai_open",
-            title: "Apertura por IA ✨",
-            desc: `Paquete de ${company} para ${recipient}`,
+            title: "Apertura Inteligente",
+            desc: `${company} entregó a ${recipient}`,
             time: currentTime,
             date: "Hoy",
           },
           ...prev,
         ]);
-      }
-
-      // 2. Detección de Mensajes
-      else if (aiText.includes("[MENSAJE_PARA")) {
+      } else if (aiText.includes("[MENSAJE_PARA")) {
         actionType = "message_saved";
         let recipient = "Desconocido";
-        let content = "Mensaje no procesado correctamente";
-
+        let content = "Recado grabado";
         const msgMatch = aiText.match(
           /\[MENSAJE_PARA\s*\|\s*(.*?)\s*\|\s*(.*?)\]/i
         );
@@ -255,12 +251,10 @@ PROTOCOLO DE ACTUACIÓN PASO A PASO:
           recipient = msgMatch[1].trim();
           content = msgMatch[2].trim();
         }
-
         const matchedPerson = authorizedNames.find(
           (p) => p.name.toLowerCase() === recipient.toLowerCase()
         );
         const phone = matchedPerson ? matchedPerson.phone : "Desconocido";
-
         setMessagesList((prev) => [
           {
             id: Date.now(),
@@ -269,42 +263,31 @@ PROTOCOLO DE ACTUACIÓN PASO A PASO:
             content,
             time: currentTime,
             date: "Hoy",
-            read: false,
             autoSent: true,
           },
           ...prev,
         ]);
-
-        // GUARDA EN EL HISTORIAL
         setHistoryLog((prev) => [
           {
             id: Date.now(),
             type: "message",
-            title: "WhatsApp Automático ✨",
-            desc: `Recado enviado a ${recipient}`,
+            title: "Nuevo Recado",
+            desc: `Dejado para ${recipient}`,
             time: currentTime,
             date: "Hoy",
           },
           ...prev,
         ]);
-      }
-
-      // 3. Detección de Acceso Denegado
-      else if (aiText.includes("[ACCESO_DENEGADO")) {
+      } else if (aiText.includes("[ACCESO_DENEGADO")) {
         actionType = "denied";
-        let reason = "Rechazado por seguridad";
-
+        let reason = "Filtro de seguridad";
         const denyMatch = aiText.match(/\[ACCESO_DENEGADO\s*\|\s*(.*?)\]/i);
-        if (denyMatch) {
-          reason = denyMatch[1].trim();
-        }
-
-        // GUARDA EN EL HISTORIAL
+        if (denyMatch) reason = denyMatch[1].trim();
         setHistoryLog((prev) => [
           {
             id: Date.now(),
             type: "denied",
-            title: "Acceso Denegado ✨",
+            title: "Acceso Denegado",
             desc: reason,
             time: currentTime,
             date: "Hoy",
@@ -313,9 +296,7 @@ PROTOCOLO DE ACTUACIÓN PASO A PASO:
         ]);
       }
 
-      // LIMPIEZA FINAL: Eliminar cualquier etiqueta de programación antes de mostrársela al usuario
       aiText = aiText.replace(/\[.*?\]/g, "").trim();
-
       setChatHistory((prev) => [
         ...prev,
         { role: "ai", content: aiText, action: actionType },
@@ -323,11 +304,7 @@ PROTOCOLO DE ACTUACIÓN PASO A PASO:
     } catch (error) {
       setChatHistory((prev) => [
         ...prev,
-        {
-          role: "ai",
-          content:
-            "Ups... Hubo un problema conectando con el servidor de la IA.",
-        },
+        { role: "ai", content: "Lo siento, hay un problema técnico temporal." },
       ]);
     } finally {
       setIsTyping(false);
@@ -335,189 +312,169 @@ PROTOCOLO DE ACTUACIÓN PASO A PASO:
   };
 
   return (
-    <div className="flex items-center justify-center min-h-screen bg-gray-100 p-4 font-sans">
-      <div className="w-full max-w-md h-[850px] max-h-[90vh] bg-gray-50 rounded-[40px] shadow-2xl overflow-hidden flex flex-col relative border-[8px] border-gray-900">
-        {/* Header de la App */}
-        <div className="bg-white px-6 pt-12 pb-4 flex flex-col shadow-sm z-10 shrink-0">
-          <div className="flex justify-between items-start mb-6">
-            <div className="h-10 flex items-center w-2/3">
-              <img
-                src="MICROSMART negro sin fondo.png"
-                alt="MicroSmart"
-                className="h-full w-auto object-contain"
-                onError={(e) => {
-                  e.target.style.display = "none";
-                  e.target.nextSibling.style.display = "flex";
-                }}
-              />
-              <div className="hidden w-full h-full items-center justify-center border-2 border-dashed border-[#7bc100]/50 rounded-lg px-2 bg-gray-50">
-                <span className="text-xs font-semibold text-gray-500 text-center">
-                  Logo MicroSmart
-                </span>
-              </div>
-            </div>
-            <div className="relative">
-              <div className="w-10 h-10 bg-gray-100 rounded-full flex items-center justify-center cursor-pointer">
-                <User size={20} className="text-gray-600" />
-              </div>
-              {/* Notificación roja si hay mensajes */}
-              {messagesList.length > 0 && (
-                <div className="absolute top-0 right-0 w-3 h-3 bg-red-500 rounded-full border-2 border-white"></div>
-              )}
+    <div className="flex items-center justify-center min-h-screen bg-[#f3f4f6] p-4 font-sans text-slate-900">
+      <div className="w-full max-w-md h-[840px] max-h-[92vh] bg-white rounded-[3rem] shadow-[0_20px_50px_rgba(0,0,0,0.1)] overflow-hidden flex flex-col relative border-[10px] border-[#1e293b]">
+        {/* Notch superior */}
+        <div className="h-6 w-1/3 bg-[#1e293b] absolute top-0 left-1/2 -translate-x-1/2 rounded-b-2xl z-30"></div>
+
+        {/* Cabecera con Logo */}
+        <div className="bg-white px-6 pt-10 pb-4 flex flex-col z-10">
+          <div className="flex justify-between items-center mb-6">
+            <MicroSmartLogo className="h-10 w-auto flex items-center" />
+            <div className="flex space-x-2">
+              <button className="p-2 hover:bg-slate-100 rounded-full transition-colors relative">
+                <Bell size={20} className="text-slate-600" />
+                {messagesList.length > 0 && (
+                  <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white"></span>
+                )}
+              </button>
+              <button className="p-2 hover:bg-slate-100 rounded-full transition-colors">
+                <Menu size={20} className="text-slate-600" />
+              </button>
             </div>
           </div>
-          <div>
-            <h1 className="text-2xl font-bold text-gray-800">
-              Hola, {authorizedNames[0]?.name?.split(" ")[0] || "Usuario"}
-            </h1>
-            <p className="text-sm text-gray-500 flex items-center mt-1">
-              <MapPin size={14} className="mr-1" /> Mi Hogar
-            </p>
+          <div className="flex items-center space-x-4 p-4 bg-slate-50 rounded-3xl border border-slate-100">
+            <div className="w-12 h-12 bg-[#00479b] rounded-2xl flex items-center justify-center shadow-lg shadow-blue-900/10">
+              <User size={24} className="text-white" />
+            </div>
+            <div>
+              <h1 className="text-lg font-bold text-slate-800 leading-tight">
+                Hola, {authorizedNames[0]?.name?.split(" ")[0]}
+              </h1>
+              <p className="text-xs text-slate-500 font-medium flex items-center">
+                <MapPin size={12} className="mr-1 text-[#7bc100]" />{" "}
+                microsmart.es
+              </p>
+            </div>
           </div>
         </div>
 
-        {/* Área de Contenido Dinámico */}
-        <div className="flex-1 overflow-y-auto pb-24 bg-gray-50 relative">
-          {/* 1. PANTALLA PRINCIPAL (HOME) */}
+        {/* Área de Contenido Principal */}
+        <div className="flex-1 overflow-y-auto pb-28 px-6 pt-2">
           {activeTab === "home" && (
-            <div className="p-6 flex flex-col items-center h-full justify-center space-y-8 animate-in fade-in zoom-in duration-300">
-              <div className="bg-white px-4 py-2 rounded-full shadow-sm flex items-center space-x-2">
-                <div className="w-2.5 h-2.5 bg-[#7bc100] rounded-full animate-pulse"></div>
-                <span className="text-sm font-medium text-gray-600">
-                  Dispositivo en línea
-                </span>
+            <div className="flex flex-col items-center space-y-10 py-10 animate-in fade-in zoom-in duration-500">
+              <div className="text-center">
+                <div
+                  className={`inline-flex items-center space-x-2 px-4 py-1.5 rounded-full text-xs font-bold transition-all ${
+                    doorStatus === "idle"
+                      ? "bg-green-50 text-green-600"
+                      : "bg-blue-50 text-blue-600"
+                  }`}
+                >
+                  <div
+                    className={`w-2 h-2 rounded-full ${
+                      doorStatus === "idle"
+                        ? "bg-green-500"
+                        : "bg-blue-500 animate-pulse"
+                    }`}
+                  ></div>
+                  <span>SISTEMA ONLINE</span>
+                </div>
               </div>
 
-              <div className="relative">
+              <div className="relative group">
                 {doorStatus === "opening" && (
-                  <>
-                    <div className="absolute inset-0 bg-[#00479b] rounded-full animate-ping opacity-40"></div>
-                    <div className="absolute inset-[-20px] bg-[#00479b] rounded-full animate-ping opacity-20 animation-delay-200"></div>
-                  </>
+                  <div className="absolute inset-0 bg-[#00479b]/20 rounded-full animate-ping"></div>
                 )}
                 <button
                   onClick={handleOpenDoor}
                   disabled={doorStatus !== "idle"}
-                  className={`relative w-64 h-64 rounded-full flex flex-col items-center justify-center shadow-xl transition-all duration-300 ${
+                  className={`relative w-64 h-64 rounded-full flex flex-col items-center justify-center shadow-2xl transition-all duration-300 transform active:scale-95 ${
                     doorStatus === "idle"
-                      ? "bg-gradient-to-b from-[#8be000] to-[#6aa600] hover:scale-105 active:scale-95 shadow-[#7bc100]/40"
-                      : doorStatus === "opening"
-                      ? "bg-[#00479b] scale-95 shadow-inner"
-                      : "bg-[#7bc100] scale-100 shadow-[#7bc100]/50"
+                      ? "bg-gradient-to-tr from-[#6aa600] to-[#8be000] shadow-[#7bc100]/30 hover:shadow-[#7bc100]/50"
+                      : "bg-[#00479b] shadow-blue-900/30"
                   }`}
                 >
-                  {doorStatus === "idle" && (
+                  <div className="absolute inset-3 rounded-full border-2 border-white/20"></div>
+                  {doorStatus === "idle" ? (
                     <>
                       <Power
                         size={64}
-                        className="text-white mb-2 drop-shadow-md"
+                        className="text-white mb-2 drop-shadow-lg"
                       />
-                      <span className="text-white text-2xl font-bold tracking-wider">
+                      <span className="text-white text-2xl font-black tracking-tighter">
                         ABRIR
                       </span>
-                      <span className="text-[#ecfccb] text-sm mt-1">
-                        Pulsar para abrir
+                      <span className="text-white/70 text-[10px] font-bold mt-1">
+                        PULSA PARA ACTIVAR
                       </span>
                     </>
-                  )}
-                  {doorStatus === "opening" && (
+                  ) : (
                     <>
                       <ShieldCheck
                         size={64}
                         className="text-white mb-2 animate-bounce"
                       />
                       <span className="text-white text-xl font-bold">
-                        Abriendo...
-                      </span>
-                    </>
-                  )}
-                  {doorStatus === "opened" && (
-                    <>
-                      <ShieldCheck size={64} className="text-white mb-2" />
-                      <span className="text-white text-xl font-bold">
-                        ¡Abierto!
+                        PROCESANDO
                       </span>
                     </>
                   )}
                 </button>
               </div>
+
+              <div className="grid grid-cols-2 gap-4 w-full">
+                <div className="bg-white p-5 rounded-[2.5rem] border border-slate-100 shadow-sm flex flex-col items-center">
+                  <span className="text-2xl font-black text-slate-800">
+                    {historyLog.length}
+                  </span>
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest text-center">
+                    Registros
+                  </span>
+                </div>
+                <div className="bg-white p-5 rounded-[2.5rem] border border-slate-100 shadow-sm flex flex-col items-center">
+                  <span className="text-2xl font-black text-slate-800">
+                    {messagesList.length}
+                  </span>
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest text-center">
+                    Avisos
+                  </span>
+                </div>
+              </div>
             </div>
           )}
 
-          {/* 2. PANTALLA CONSERJE IA (SIMULADOR) */}
           {activeTab === "ai" && (
-            <div className="flex flex-col h-full animate-in fade-in duration-300">
-              <div className="p-6 pb-2 shrink-0">
-                <div className="flex items-center justify-between mb-2">
-                  <h2 className="text-xl font-bold text-gray-800">
-                    Simulador IA ✨
-                  </h2>
-                  <div className="w-12 h-6 bg-[#00479b] rounded-full flex items-center p-1 justify-end">
-                    <div className="w-4 h-4 bg-white rounded-full shadow-md"></div>
-                  </div>
-                </div>
-                <p className="text-xs text-gray-500">
-                  Todo lo que hables aquí quedará registrado en el Historial.
+            <div className="flex flex-col h-full animate-in slide-in-from-bottom-4 duration-500 bg-slate-50 -mx-6 rounded-t-[3rem] overflow-hidden border-t border-slate-200">
+              <div className="p-6 pb-2">
+                <h2 className="text-xl font-black text-slate-800 flex items-center">
+                  <Sparkles size={20} className="mr-2 text-[#00479b]" />{" "}
+                  Conserje IA
+                </h2>
+                <p className="text-[10px] font-bold text-slate-400 mt-1 uppercase tracking-widest">
+                  Simulador de telefonillo
                 </p>
               </div>
 
-              {/* Chat del Simulador */}
-              <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4 bg-white/50">
+              <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
                 {chatHistory.map((msg, idx) => (
                   <div
                     key={idx}
-                    className={`flex flex-col ${
-                      msg.role === "user" ? "items-end" : "items-start"
+                    className={`flex ${
+                      msg.role === "user" ? "justify-end" : "justify-start"
                     }`}
                   >
                     <div
-                      className={`max-w-[85%] p-3 rounded-2xl shadow-sm text-sm ${
+                      className={`max-w-[85%] px-4 py-3 rounded-3xl text-sm leading-relaxed shadow-sm ${
                         msg.role === "user"
-                          ? "bg-[#7bc100] text-white rounded-br-none"
-                          : "bg-white border border-gray-100 text-gray-700 rounded-bl-none"
+                          ? "bg-[#00479b] text-white rounded-br-none"
+                          : "bg-white text-slate-700 rounded-bl-none border border-slate-100"
                       }`}
                     >
-                      {msg.role === "ai" && (
-                        <Sparkles
-                          size={14}
-                          className="inline mr-1 text-orange-400 mb-0.5"
-                        />
-                      )}
                       {msg.content}
                     </div>
-
-                    {/* Alertas visuales de las acciones que toma la IA */}
-                    {msg.action === "opened" && (
-                      <div className="mt-2 text-[10px] font-bold text-green-700 flex items-center bg-green-100 px-3 py-1.5 rounded-full">
-                        <Power size={12} className="mr-1" /> PUERTA ABIERTA Y
-                        REGISTRADA
-                      </div>
-                    )}
-                    {msg.action === "message_saved" && (
-                      <div className="mt-2 text-[10px] font-bold text-[#00479b] flex items-center bg-blue-100 px-3 py-1.5 rounded-full">
-                        <MessageSquare size={12} className="mr-1" /> RECARDO
-                        GUARDADO EN "MENSAJES"
-                      </div>
-                    )}
-                    {msg.action === "denied" && (
-                      <div className="mt-2 text-[10px] font-bold text-red-600 flex items-center bg-red-100 px-3 py-1.5 rounded-full">
-                        <ShieldAlert size={12} className="mr-1" /> ACCESO
-                        DENEGADO Y REGISTRADO
-                      </div>
-                    )}
                   </div>
                 ))}
-
                 {isTyping && (
-                  <div className="flex items-start">
-                    <div className="bg-white border border-gray-100 p-3 rounded-2xl rounded-bl-none shadow-sm flex space-x-1">
-                      <div className="w-2 h-2 bg-gray-300 rounded-full animate-bounce"></div>
+                  <div className="flex justify-start">
+                    <div className="bg-white border border-slate-100 px-4 py-3 rounded-3xl rounded-bl-none shadow-sm flex space-x-1">
+                      <div className="w-1.5 h-1.5 bg-slate-300 rounded-full animate-bounce"></div>
                       <div
-                        className="w-2 h-2 bg-gray-300 rounded-full animate-bounce"
+                        className="w-1.5 h-1.5 bg-slate-300 rounded-full animate-bounce"
                         style={{ animationDelay: "0.2s" }}
                       ></div>
                       <div
-                        className="w-2 h-2 bg-gray-300 rounded-full animate-bounce"
+                        className="w-1.5 h-1.5 bg-slate-300 rounded-full animate-bounce"
                         style={{ animationDelay: "0.4s" }}
                       ></div>
                     </div>
@@ -526,8 +483,7 @@ PROTOCOLO DE ACTUACIÓN PASO A PASO:
                 <div ref={chatEndRef} />
               </div>
 
-              {/* Input del Chat */}
-              <div className="p-4 bg-white border-t border-gray-100 shrink-0 mb-4">
+              <div className="p-4 bg-white border-t border-slate-100">
                 <div className="relative flex items-center">
                   <input
                     type="text"
@@ -536,129 +492,110 @@ PROTOCOLO DE ACTUACIÓN PASO A PASO:
                     onKeyPress={(e) =>
                       e.key === "Enter" && handleSimulateVisitor()
                     }
-                    placeholder="Ej: Soy repartidor..."
-                    className="w-full bg-gray-100 text-sm text-gray-800 rounded-full pl-4 pr-12 py-3 focus:outline-none focus:ring-2 focus:ring-[#7bc100]/50"
+                    placeholder="Escribe como si fueras la visita..."
+                    className="w-full bg-slate-50 text-sm text-slate-800 rounded-2xl pl-4 pr-12 py-4 focus:outline-none focus:ring-2 focus:ring-[#7bc100]/20 border border-slate-100"
                   />
                   <button
                     onClick={handleSimulateVisitor}
                     disabled={isTyping || !chatInput.trim()}
-                    className="absolute right-2 p-1.5 bg-[#00479b] text-white rounded-full hover:bg-blue-800 disabled:opacity-50 transition-colors"
+                    className="absolute right-2 p-2.5 bg-[#00479b] text-white rounded-xl hover:bg-blue-800 disabled:opacity-30 transition-all shadow-lg shadow-blue-900/20"
                   >
-                    <Send size={16} />
+                    <Send size={18} />
                   </button>
                 </div>
               </div>
             </div>
           )}
 
-          {/* 3. PANTALLA HISTORIAL */}
           {activeTab === "history" && (
-            <div className="p-6 animate-in fade-in duration-300">
-              <h2 className="text-xl font-bold text-gray-800 mb-6">
-                Actividad Reciente
+            <div className="animate-in fade-in slide-in-from-right-4 duration-500">
+              <h2 className="text-2xl font-black text-slate-800 mb-6 tracking-tight">
+                Actividad
               </h2>
-
               <div className="space-y-4">
-                {historyLog.length === 0 ? (
-                  <p className="text-sm text-gray-500 text-center mt-10">
-                    No hay actividad registrada aún.
-                  </p>
-                ) : (
-                  historyLog.map((log) => (
+                {historyLog.map((log) => (
+                  <div
+                    key={log.id}
+                    className="bg-white p-5 rounded-[2rem] shadow-sm border border-slate-100 flex items-center space-x-4"
+                  >
                     <div
-                      key={log.id}
-                      className="bg-white p-4 rounded-2xl shadow-sm flex items-start space-x-4 border border-gray-50"
+                      className={`p-3 rounded-2xl ${
+                        log.type === "ai_open"
+                          ? "bg-green-100 text-[#7bc100]"
+                          : log.type === "manual"
+                          ? "bg-blue-100 text-[#00479b]"
+                          : log.type === "message"
+                          ? "bg-purple-100 text-purple-600"
+                          : "bg-red-100 text-red-500"
+                      }`}
                     >
-                      <div
-                        className={`p-3 rounded-full ${
-                          log.type === "ai_open"
-                            ? "bg-green-50 text-[#7bc100]"
-                            : log.type === "manual"
-                            ? "bg-blue-50 text-[#00479b]"
-                            : log.type === "message"
-                            ? "bg-purple-50 text-purple-600"
-                            : "bg-red-50 text-red-500"
-                        }`}
-                      >
-                        {log.type === "ai_open" && <Package size={20} />}
-                        {log.type === "manual" && <User size={20} />}
-                        {log.type === "message" && <MessageSquare size={20} />}
-                        {log.type === "denied" && <ShieldAlert size={20} />}
-                      </div>
-                      <div className="flex-1">
-                        <h4 className="font-bold text-gray-800 text-sm">
-                          {log.title}
-                        </h4>
-                        <p className="text-xs text-gray-500 mt-0.5 leading-snug">
-                          {log.desc}
-                        </p>
-                      </div>
-                      <div className="text-right">
-                        <span className="text-xs font-bold text-gray-700 block">
-                          {log.time}
-                        </span>
-                        <span className="text-[10px] text-gray-400">
-                          {log.date}
-                        </span>
-                      </div>
+                      {log.type === "ai_open" ? (
+                        <Package size={20} />
+                      ) : log.type === "manual" ? (
+                        <User size={20} />
+                      ) : log.type === "message" ? (
+                        <MessageSquare size={20} />
+                      ) : (
+                        <ShieldAlert size={20} />
+                      )}
                     </div>
-                  ))
-                )}
+                    <div className="flex-1">
+                      <h4 className="font-bold text-slate-800 text-sm leading-none mb-1">
+                        {log.title}
+                      </h4>
+                      <p className="text-[11px] text-slate-500 font-medium">
+                        {log.desc}
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <span className="text-xs font-black text-slate-700 block">
+                        {log.time}
+                      </span>
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
           )}
 
-          {/* 4. PANTALLA MENSAJES */}
           {activeTab === "messages" && (
-            <div className="p-6 animate-in fade-in duration-300">
-              <div className="flex items-center justify-between mb-6">
-                <h2 className="text-xl font-bold text-gray-800">
-                  Mensajes de Visitas
-                </h2>
-                <span className="bg-red-100 text-red-600 text-xs font-bold px-2 py-1 rounded-full">
-                  {messagesList.length} nuevos
-                </span>
-              </div>
-
+            <div className="animate-in fade-in slide-in-from-right-4 duration-500">
+              <h2 className="text-2xl font-black text-slate-800 mb-6 tracking-tight">
+                Recados
+              </h2>
               <div className="space-y-4">
                 {messagesList.length === 0 ? (
-                  <div className="text-center mt-12 bg-white p-6 rounded-2xl border border-gray-100">
+                  <div className="text-center py-20 bg-slate-50 rounded-[3rem] border-2 border-dashed border-slate-200">
                     <MessageSquare
-                      size={40}
-                      className="text-gray-300 mx-auto mb-3"
+                      size={48}
+                      className="text-slate-300 mx-auto mb-4"
                     />
-                    <p className="text-sm text-gray-500">
-                      No hay recados de visitas.
-                      <br />
-                      La IA filtrará y guardará los mensajes aquí.
+                    <p className="text-slate-400 font-bold text-sm">
+                      Sin mensajes pendientes
                     </p>
                   </div>
                 ) : (
                   messagesList.map((msg) => (
                     <div
                       key={msg.id}
-                      className="bg-white p-5 rounded-2xl shadow-sm border border-l-4 border-l-[#7bc100] flex flex-col space-y-3"
+                      className="bg-white p-6 rounded-[2.5rem] shadow-md border-l-4 border-l-[#7bc100]"
                     >
-                      <div className="flex justify-between items-start">
+                      <div className="flex justify-between items-start mb-3">
                         <div>
-                          <span className="text-[10px] font-bold text-[#00479b] tracking-wider uppercase">
-                            Mensaje para
+                          <span className="text-[9px] font-black text-[#00479b] tracking-tighter uppercase">
+                            PARA
                           </span>
-                          <h4 className="font-bold text-gray-800 text-sm">
-                            {msg.recipient}{" "}
-                            <span className="text-xs text-gray-400 font-normal">
-                              ({msg.phone})
-                            </span>
+                          <h4 className="font-black text-slate-800 text-base">
+                            {msg.recipient}
                           </h4>
                         </div>
-                        <span className="text-xs text-gray-400">
+                        <span className="text-[10px] font-bold text-slate-400">
                           {msg.time}
                         </span>
                       </div>
-                      <p className="text-sm text-gray-600 bg-gray-50 p-3 rounded-xl italic">
+                      <p className="text-sm text-slate-600 mb-4 font-medium italic">
                         "{msg.content}"
                       </p>
-
                       <a
                         href={`https://wa.me/${msg.phone.replace(
                           /\D/g,
@@ -668,16 +605,11 @@ PROTOCOLO DE ACTUACIÓN PASO A PASO:
                         )}`}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="flex items-center justify-center w-full mt-2 bg-green-500 hover:bg-green-600 text-white py-2.5 rounded-xl text-xs font-bold transition-colors"
+                        className="flex items-center justify-center w-full bg-[#25d366] hover:bg-[#128c7e] text-white py-3 rounded-2xl text-xs font-black transition-all shadow-lg shadow-green-500/20"
                       >
-                        <PhoneForwarded size={14} className="mr-2" /> Enviar por
-                        WhatsApp
+                        <PhoneForwarded size={16} className="mr-2" /> REENVIAR
+                        WHATSAPP
                       </a>
-
-                      <div className="flex items-center justify-center w-full mt-1 bg-green-50 text-green-700 border border-green-200 py-1.5 rounded-xl text-[10px] font-bold">
-                        <ShieldCheck size={12} className="mr-1" /> Procesado por
-                        IA
-                      </div>
                     </div>
                   ))
                 )}
@@ -685,178 +617,174 @@ PROTOCOLO DE ACTUACIÓN PASO A PASO:
             </div>
           )}
 
-          {/* 5. PANTALLA AJUSTES */}
           {activeTab === "settings" && (
-            <div className="p-6 animate-in fade-in duration-300">
-              <h2 className="text-xl font-bold text-gray-800 mb-6">
-                Ajustes Generales
+            <div className="animate-in fade-in slide-in-from-right-4 duration-500 space-y-6">
+              <h2 className="text-2xl font-black text-slate-800 mb-6 tracking-tight">
+                Configuración
               </h2>
 
-              {/* SECCIÓN: PERSONAS AUTORIZADAS */}
-              <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden mb-6 p-5">
-                <div className="flex items-center space-x-2 mb-2">
+              <div className="bg-white rounded-[2.5rem] p-6 shadow-sm border border-slate-100">
+                <div className="flex items-center space-x-3 mb-4">
                   <UserPlus size={20} className="text-[#00479b]" />
-                  <h3 className="font-bold text-gray-800">
+                  <h3 className="font-bold text-slate-800">
                     Personas Autorizadas
                   </h3>
                 </div>
-                <p className="text-xs text-gray-500 mb-4">
-                  La IA enviará los recados automáticamente al WhatsApp de estas
-                  personas.
-                </p>
 
-                {/* Lista de Nombres */}
-                <div className="space-y-2 mb-4">
-                  {authorizedNames.length === 0 && (
-                    <div className="text-xs text-orange-500 bg-orange-50 p-2 rounded text-center">
-                      Nadie está autorizado ahora mismo.
-                    </div>
-                  )}
+                <div className="space-y-3 mb-6">
                   {authorizedNames.map((person, index) => (
                     <div
                       key={index}
-                      className="flex justify-between items-center bg-gray-50 p-2.5 rounded-xl border border-gray-100"
+                      className="flex justify-between items-center bg-slate-50 p-3 rounded-2xl border border-slate-100"
                     >
                       <div>
-                        <span className="text-sm font-medium text-gray-700 pl-2 block">
+                        <span className="text-sm font-bold text-slate-700 block">
                           {person.name}
                         </span>
-                        <span className="text-xs text-gray-500 pl-2 flex items-center mt-0.5">
-                          <PhoneForwarded size={10} className="mr-1" />{" "}
+                        <span className="text-[10px] text-slate-400 font-bold">
                           {person.phone}
                         </span>
                       </div>
                       <button
                         onClick={() => handleRemoveName(person.name)}
-                        className="text-red-400 hover:text-red-600 hover:bg-red-50 p-1.5 rounded-lg transition-colors"
+                        className="text-red-400 p-2 hover:bg-red-50 rounded-xl"
                       >
-                        <X size={16} />
+                        <X size={18} />
                       </button>
                     </div>
                   ))}
                 </div>
 
-                {/* Input para añadir nombres y teléfonos */}
-                <div className="flex flex-col space-y-2 mt-2">
+                <div className="space-y-3">
                   <input
                     type="text"
                     value={newName}
                     onChange={(e) => setNewName(e.target.value)}
-                    placeholder="Nombre y Apellido..."
-                    className="w-full bg-gray-50 border border-gray-200 text-sm text-gray-800 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#7bc100]/50"
+                    placeholder="Nombre completo"
+                    className="w-full bg-slate-50 border border-slate-200 text-sm rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-[#7bc100]/20"
                   />
                   <div className="flex space-x-2">
-                    <div className="flex flex-1 bg-gray-50 border border-gray-200 rounded-xl focus-within:ring-2 focus-within:ring-[#7bc100]/50 overflow-hidden">
-                      <span className="bg-gray-100 text-gray-500 px-3 py-2 border-r border-gray-200 text-sm flex items-center font-medium">
+                    <div className="flex-1 bg-slate-50 border border-slate-200 rounded-xl flex items-center px-4">
+                      <span className="text-slate-400 text-sm font-bold border-r border-slate-200 pr-3 mr-3">
                         +34
                       </span>
                       <input
                         type="tel"
                         value={newPhone}
                         onChange={(e) => setNewPhone(e.target.value)}
-                        onKeyPress={(e) => e.key === "Enter" && handleAddName()}
-                        placeholder="600 111 222"
-                        className="flex-1 bg-transparent text-sm text-gray-800 px-3 py-2 focus:outline-none"
+                        placeholder="Teléfono"
+                        className="bg-transparent text-sm w-full py-3 focus:outline-none"
                       />
                     </div>
                     <button
                       onClick={handleAddName}
-                      disabled={!newName.trim() || !newPhone.trim()}
-                      className="bg-[#00479b] text-white px-4 py-2 rounded-xl text-sm font-medium hover:bg-blue-800 disabled:opacity-50 transition-colors"
+                      className="bg-[#00479b] text-white px-6 rounded-xl font-bold shadow-lg shadow-blue-900/20 active:scale-95 transition-all"
                     >
-                      Añadir
+                      OK
                     </button>
                   </div>
                 </div>
               </div>
 
-              {/* OTROS AJUSTES */}
-              <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-                <div className="p-4 border-b border-gray-50 flex items-center justify-between cursor-pointer hover:bg-gray-50 transition-colors">
+              <div className="bg-white rounded-[2.5rem] p-6 shadow-sm border border-slate-100 space-y-2">
+                <button className="w-full flex justify-between items-center p-3 hover:bg-slate-50 rounded-2xl transition-all">
                   <div className="flex items-center space-x-3">
-                    <div className="bg-gray-50 p-2 rounded-lg">
-                      <Wifi size={20} className="text-[#00479b]" />
-                    </div>
-                    <span className="font-medium text-gray-700 text-sm">
-                      Configurar Red WiFi
+                    <Wifi size={20} className="text-slate-400" />
+                    <span className="text-sm font-bold text-slate-700">
+                      Configurar WiFi
                     </span>
                   </div>
-                  <ChevronRight size={18} className="text-gray-400" />
-                </div>
+                  <ChevronRight size={18} className="text-slate-300" />
+                </button>
+                <button className="w-full flex justify-between items-center p-3 hover:bg-red-50 rounded-2xl transition-all text-red-500">
+                  <div className="flex items-center space-x-3">
+                    <LogOut size={20} />
+                    <span className="text-sm font-bold">Desconectar App</span>
+                  </div>
+                </button>
               </div>
 
-              <div className="mt-8 text-center">
-                <p className="text-xs text-[#00479b] font-bold tracking-wide">
+              <div className="text-center pt-4">
+                <p className="text-[10px] font-black text-[#00479b] tracking-[0.2em]">
                   MICROSMART.ES
                 </p>
-                <p className="text-[10px] text-gray-400 mt-1">
-                  Versión 1.1.0 (Build 2026)
+                <p className="text-[9px] text-slate-300 font-bold mt-1 uppercase">
+                  Control Inteligente v1.2
                 </p>
               </div>
             </div>
           )}
         </div>
 
-        {/* Barra de Navegación Inferior */}
-        <div className="absolute bottom-0 left-0 right-0 bg-white border-t border-gray-100 px-4 py-4 flex justify-between items-center z-20 pb-8">
-          <button
+        {/* Menú Inferior Estilo Dock */}
+        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 w-[90%] bg-white/90 backdrop-blur-xl border border-white/50 px-4 py-3 flex justify-between items-center z-20 rounded-[2.5rem] shadow-2xl">
+          <NavItem
+            active={activeTab === "home"}
             onClick={() => setActiveTab("home")}
-            className={`flex flex-col items-center space-y-1 w-1/5 ${
-              activeTab === "home" ? "text-[#00479b]" : "text-gray-400"
-            }`}
-          >
-            <Home size={22} strokeWidth={activeTab === "home" ? 2.5 : 2} />
-            <span className="text-[9px] font-bold">Inicio</span>
-          </button>
-          <button
+            icon={<Home size={24} />}
+            label="Inicio"
+          />
+          <NavItem
+            active={activeTab === "history"}
             onClick={() => setActiveTab("history")}
-            className={`flex flex-col items-center space-y-1 w-1/5 ${
-              activeTab === "history" ? "text-[#00479b]" : "text-gray-400"
-            }`}
-          >
-            <Clock size={22} strokeWidth={activeTab === "history" ? 2.5 : 2} />
-            <span className="text-[9px] font-bold">Historial</span>
-          </button>
-          <button
+            icon={<Clock size={24} />}
+            label="Registro"
+          />
+          <NavItem
+            active={activeTab === "messages"}
             onClick={() => setActiveTab("messages")}
-            className={`relative flex flex-col items-center space-y-1 w-1/5 ${
-              activeTab === "messages" ? "text-[#00479b]" : "text-gray-400"
-            }`}
-          >
-            <div className="relative">
-              <MessageSquare
-                size={22}
-                strokeWidth={activeTab === "messages" ? 2.5 : 2}
-              />
-              {messagesList.length > 0 && (
-                <span className="absolute -top-1 -right-1.5 w-3 h-3 bg-red-500 rounded-full border-2 border-white"></span>
-              )}
-            </div>
-            <span className="text-[9px] font-bold">Mensajes</span>
-          </button>
-          <button
+            icon={<MessageSquare size={24} />}
+            label="Recados"
+            badge={messagesList.length}
+          />
+          <NavItem
+            active={activeTab === "ai"}
             onClick={() => setActiveTab("ai")}
-            className={`flex flex-col items-center space-y-1 w-1/5 ${
-              activeTab === "ai" ? "text-[#00479b]" : "text-gray-400"
-            }`}
-          >
-            <Bot size={22} strokeWidth={activeTab === "ai" ? 2.5 : 2} />
-            <span className="text-[9px] font-bold">Simulador</span>
-          </button>
-          <button
+            icon={<Bot size={24} />}
+            label="IA"
+          />
+          <NavItem
+            active={activeTab === "settings"}
             onClick={() => setActiveTab("settings")}
-            className={`flex flex-col items-center space-y-1 w-1/5 ${
-              activeTab === "settings" ? "text-[#00479b]" : "text-gray-400"
-            }`}
-          >
-            <Settings
-              size={22}
-              strokeWidth={activeTab === "settings" ? 2.5 : 2}
-            />
-            <span className="text-[9px] font-bold">Ajustes</span>
-          </button>
+            icon={<Settings size={24} />}
+            label="Ajustes"
+          />
         </div>
       </div>
     </div>
+  );
+}
+
+function NavItem({ active, onClick, icon, label, badge }) {
+  return (
+    <button
+      onClick={onClick}
+      className={`relative flex flex-col items-center justify-center p-2 transition-all duration-300 ${
+        active ? "text-[#00479b]" : "text-slate-400 hover:text-slate-600"
+      }`}
+    >
+      <div
+        className={`transition-all duration-300 ${
+          active ? "scale-110 -translate-y-1" : "scale-100"
+        }`}
+      >
+        {icon}
+        {badge > 0 && (
+          <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white text-[8px] font-black rounded-full flex items-center justify-center border-2 border-white">
+            {badge}
+          </span>
+        )}
+      </div>
+      <span
+        className={`text-[8px] font-black uppercase tracking-tighter mt-1 transition-all ${
+          active ? "opacity-100" : "opacity-0 h-0"
+        }`}
+      >
+        {label}
+      </span>
+      {active && (
+        <div className="absolute -bottom-1 w-1 h-1 bg-[#00479b] rounded-full"></div>
+      )}
+    </button>
   );
 }
