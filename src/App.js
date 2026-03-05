@@ -24,6 +24,8 @@ import {
   Mic,
   MicOff,
   Volume2,
+  Wand2,
+  FileText,
 } from "lucide-react";
 
 // Implementación de Backoff Exponencial protegida
@@ -99,15 +101,28 @@ export default function App() {
       date: "Hoy",
     },
   ]);
-  const [messagesList, setMessagesList] = useState([]);
+  const [messagesList, setMessagesList] = useState([
+    {
+      id: 1,
+      recipient: "Carlos García",
+      content: "Vino un mensajero buscando entregar unas llaves.",
+      time: "10:15",
+      phone: "+34 600 111 222",
+    },
+  ]);
   const [chatInput, setChatInput] = useState("");
   const [isTyping, setIsTyping] = useState(false);
 
-  // Estados para UI
+  // Estados para voz y fluidez
   const [isListening, setIsListening] = useState(false);
   const [isFluidMode, setIsFluidMode] = useState(false);
 
-  // Referencias CRÍTICAS para el Bucle de Voz (Semáforos)
+  // Estados para funciones de IA extras
+  const [isSummarizing, setIsSummarizing] = useState(false);
+  const [activitySummary, setActivitySummary] = useState("");
+  const [draftingId, setDraftingId] = useState(null);
+
+  // Referencias para el Bucle de Voz
   const isFluidModeRef = useRef(false);
   const isProcessingRef = useRef(false);
   const isSpeakingRef = useRef(false);
@@ -123,6 +138,9 @@ export default function App() {
   const [apiHistory, setApiHistory] = useState([]);
   const chatEndRef = useRef(null);
 
+  // Tu API KEY de Google Gemini
+  const apiKey = "AIzaSyCV4h1hmZg0bj-qi_YO3K8CjkFyjZumqmg";
+
   // Precargar las voces del sistema
   useEffect(() => {
     if ("speechSynthesis" in window) {
@@ -133,22 +151,67 @@ export default function App() {
     }
   }, []);
 
-  // --- LÓGICA DE VOZ Y SÍNTESIS ---
+  // --- FUNCIONES IA: RESUMEN Y REDACCIÓN ---
+  const handleSummarizeActivity = async () => {
+    if (historyLog.length === 0 || isSummarizing) return;
+    setIsSummarizing(true);
+    const activityData = historyLog
+      .map((log) => `${log.time}: ${log.title} - ${log.desc}`)
+      .join("\n");
+    const prompt = `Resume brevemente la actividad de hoy del portero: ${activityData}`;
+    try {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
+      const response = await fetchWithRetry(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
+      });
+      setActivitySummary(
+        response.candidates?.[0]?.content?.parts?.[0]?.text ||
+          "No hay resumen disponible."
+      );
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setIsSummarizing(false);
+    }
+  };
+
+  const handleDraftReply = async (message) => {
+    setDraftingId(message.id);
+    const prompt = `Redacta una respuesta de WhatsApp muy corta y amable para este recado: "${message.content}"`;
+    try {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
+      const response = await fetchWithRetry(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
+      });
+      const draft = response.candidates?.[0]?.content?.parts?.[0]?.text;
+      const whatsappUrl = `https://wa.me/${message.phone.replace(
+        /\D/g,
+        ""
+      )}?text=${encodeURIComponent(draft.trim())}`;
+      window.open(whatsappUrl, "_blank");
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setDraftingId(null);
+    }
+  };
+
+  // --- LÓGICA DE VOZ ---
   const speakResponse = (text) => {
     if ("speechSynthesis" in window) {
       window.speechSynthesis.cancel();
-
       const cleanText = text.replace(/\[.*?\]/g, "").trim();
-
       if (!cleanText) {
         isProcessingRef.current = false;
         if (isFluidModeRef.current) setTimeout(startListening, 300);
         return;
       }
-
       const utterance = new SpeechSynthesisUtterance(cleanText);
       utterance.lang = "es-ES";
-
       const voices = window.speechSynthesis.getVoices();
       const preferredNames = [
         "google",
@@ -157,54 +220,24 @@ export default function App() {
         "monica",
         "paulina",
         "jorge",
-        "luciana",
-        "network",
       ];
-
       let bestVoice = voices.find(
         (v) =>
           (v.lang.startsWith("es-") || v.lang === "es") &&
           preferredNames.some((name) => v.name.toLowerCase().includes(name))
       );
-
-      if (!bestVoice) {
-        bestVoice = voices.find(
-          (v) =>
-            (v.lang.startsWith("es-") || v.lang === "es") &&
-            v.localService === false
-        );
-      }
-
-      if (!bestVoice) {
+      if (!bestVoice)
         bestVoice = voices.find(
           (v) => v.lang.startsWith("es-") || v.lang === "es"
         );
-      }
-
-      if (bestVoice) {
-        utterance.voice = bestVoice;
-      }
-
+      if (bestVoice) utterance.voice = bestVoice;
       utterance.rate = 1.0;
       utterance.pitch = 1.0;
-
       isSpeakingRef.current = true;
-
       utterance.onend = () => {
         isSpeakingRef.current = false;
-        if (isFluidModeRef.current) {
-          setTimeout(startListening, 300);
-        }
+        if (isFluidModeRef.current) setTimeout(startListening, 300);
       };
-
-      utterance.onerror = (e) => {
-        console.error("Error en síntesis de voz:", e);
-        isSpeakingRef.current = false;
-        if (isFluidModeRef.current) {
-          setTimeout(startListening, 500);
-        }
-      };
-
       window.speechSynthesis.speak(utterance);
     }
   };
@@ -213,15 +246,10 @@ export default function App() {
     const SpeechRecognition =
       window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SpeechRecognition) return;
-
     if (!recognitionRef.current) {
       recognitionRef.current = new SpeechRecognition();
       recognitionRef.current.lang = "es-ES";
-      recognitionRef.current.interimResults = false;
-      recognitionRef.current.continuous = false;
-
       recognitionRef.current.onstart = () => setIsListening(true);
-
       recognitionRef.current.onend = () => {
         setIsListening(false);
         if (
@@ -234,15 +262,13 @@ export default function App() {
               isFluidModeRef.current &&
               !isProcessingRef.current &&
               !isSpeakingRef.current
-            ) {
+            )
               try {
                 recognitionRef.current.start();
               } catch (e) {}
-            }
           }, 300);
         }
       };
-
       recognitionRef.current.onresult = (event) => {
         const transcript = event.results[0][0].transcript;
         if (transcript.trim()) {
@@ -251,21 +277,16 @@ export default function App() {
           handleSimulateVisitor(transcript);
         }
       };
-
-      recognitionRef.current.onerror = () => {
-        setIsListening(false);
-      };
+      recognitionRef.current.onerror = () => setIsListening(false);
     }
-
     if (
       isFluidModeRef.current &&
       !isProcessingRef.current &&
       !isSpeakingRef.current
-    ) {
+    )
       try {
         recognitionRef.current.start();
       } catch (e) {}
-    }
   };
 
   const toggleFluidMode = () => {
@@ -279,8 +300,8 @@ export default function App() {
       window.speechSynthesis.cancel();
     } else {
       if ("speechSynthesis" in window) {
-        const unlockUtterance = new SpeechSynthesisUtterance("");
-        window.speechSynthesis.speak(unlockUtterance);
+        const unlock = new SpeechSynthesisUtterance("");
+        window.speechSynthesis.speak(unlock);
       }
       isFluidModeRef.current = true;
       setIsFluidMode(true);
@@ -288,7 +309,7 @@ export default function App() {
     }
   };
 
-  // Bloqueo de UI
+  // Bloqueo de Zoom y Scroll
   useEffect(() => {
     document.body.style.overflow = "hidden";
     document.body.style.position = "fixed";
@@ -367,56 +388,21 @@ export default function App() {
     setChatInput("");
     setIsTyping(true);
 
-    // ==========================================
-    // API KEY INTEGRADA
-    // ==========================================
-    const apiKey = "AIzaSyCaCYSw9-LJVA8NZ5e5iICZePEZ1W6rG4c";
-
     const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
     const allowedNamesList =
       authorizedNames.length > 0
         ? authorizedNames.map((p) => p.name).join(", ")
         : "Nadie";
 
-    const systemPrompt = `Eres el CONSERJE VIRTUAL INTELIGENTE de MicroSmart. 
-Tu misión es gestionar el acceso a la vivienda con EXCELENCIA, SEGURIDAD y NATURALIDAD.
-
-IDENTIDAD Y TONO:
-- Eres el rostro de MicroSmart: amable, profesional, eficiente y de confianza.
-- Habla como una persona real, no como un robot. Usa frases variadas.
-- No digas "Bienvenido al edificio", di simplemente "MicroSmart" o "Vivienda Inteligente".
-
-REGLAS DE INTELIGENCIA SUPERIOR (¡MUY IMPORTANTE!):
-1. NO SEAS TONTO: Si el visitante ya te dio información en su frase anterior, RECONÓCELA. 
-   - Ejemplo: Si dice "Soy Juan de Amazon para Carlos García", NO preguntes "¿De qué empresa viene?". Pasa directamente a abrir la puerta.
-2. MEMORIA DE CONTEXTO: Lee siempre los mensajes anteriores del usuario antes de responder. No repitas preguntas que ya tienen respuesta en el historial.
-3. SEGURIDAD DE HIERRO: Nunca confirmes nombres de propietarios si el visitante no los dice primero. 
-   - Visitante: "¿Vive aquí Carlos?" -> Conserje: "¿A quién busca exactamente, por favor?" (Mantén la privacidad).
-4. LISTA DE PROPIETARIOS AUTORIZADOS: [${allowedNamesList}].
-
-PROTOCOLO DE ACTUACIÓN:
-A. REPARTIDORES: Debes validar: 1. Empresa y 2. Destinatario (Nombre y Apellido).
-   - Si los datos son correctos y están en la lista: Dile "Un momento, verifico... Correcto, le abro la puerta. Deje el paquete en el lugar indicado. Gracias".
-   - Acción requerida: Usa la etiqueta [ABRIR_PUERTA | Empresa | Destinatario]
-B. VISITAS PERSONALES: Debes saber quién es y a quién busca.
-   - Si el anfitrión está en la lista: Explica que el propietario no puede atenderle ahora mismo, pero ofrece dejar un recado detallado.
-   - Acción requerida: Usa la etiqueta [MENSAJE_PARA | NombreAutorizado | texto]
-C. RECHAZO: Si no hay coincidencia o es publicidad/comercial.
-   - Acción requerida: Usa la etiqueta [ACCESO_DENEGADO | Motivo]
-
-GESTIÓN DEL MICRÓFONO:
-- Si estás pidiendo un dato que falta (ej. el apellido), NO pongas ninguna etiqueta de fin.
-- Solo cuando hayas terminado la gestión (puerta abierta, mensaje guardado o acceso denegado), añade la etiqueta: [FIN_CONVERSACION] al final de tu frase para que el sistema se duerma.`;
-
-    if (!apiKey) {
-      setChatHistory((prev) => [
-        ...prev,
-        { role: "ai", content: "⚠️ Error de configuración de llave." },
-      ]);
-      setIsTyping(false);
-      isProcessingRef.current = false;
-      return;
-    }
+    const systemPrompt = `Eres el CONSERJE INTELIGENTE de MicroSmart. 
+Misión: Gestionar el acceso con EXCELENCIA y SEGURIDAD.
+REGLAS:
+1. NO SEAS TONTO: Si el visitante ya te dio datos (nombre, empresa, destinatario), RECONÓCELOS. No preguntes lo que ya sabes.
+2. MEMORIA: Lee el historial antes de responder.
+3. SEGURIDAD: No confirmes nombres de propietarios si no los dicen bien.
+4. PROPIETARIOS: [${allowedNamesList}].
+ACCIONES: [ABRIR_PUERTA | Empresa | Destinatario] o [MENSAJE_PARA | NombreAutorizado | texto] o [ACCESO_DENEGADO | Motivo].
+Solo añade [FIN_CONVERSACION] si ya terminaste la gestión.`;
 
     const newApiMsg = { role: "user", parts: [{ text: textToSend }] };
     let validApiHistory = [...apiHistory];
@@ -435,37 +421,26 @@ GESTIÓN DEL MICRÓFONO:
         body: JSON.stringify({
           systemInstruction: { parts: [{ text: systemPrompt }] },
           contents: contents,
-          generationConfig: {
-            temperature: 0.7, // Un poco de creatividad para que suene humano
-            topP: 0.95,
-            topK: 40,
-          },
+          generationConfig: { temperature: 0.7 },
         }),
       });
-
       let aiText = data.candidates?.[0]?.content?.parts?.[0]?.text;
-      if (!aiText) throw new Error("Respuesta vacía de la IA.");
-
+      if (!aiText) throw new Error("Respuesta vacía.");
       setApiHistory([
         ...contents,
         { role: "model", parts: [{ text: aiText }] },
       ]);
-
-      let actionType = null;
-      let endConversation = false;
-
+      let actionType = null,
+        endConversation = false;
       if (aiText.includes("[ABRIR_PUERTA")) actionType = "opened";
       else if (aiText.includes("[MENSAJE_PARA")) actionType = "message_saved";
       else if (aiText.includes("[ACCESO_DENEGADO")) actionType = "denied";
-
       if (aiText.includes("[FIN_CONVERSACION]")) endConversation = true;
-
       const finalAiText = aiText.replace(/\[.*?\]/g, "").trim();
       setChatHistory((prev) => [
         ...prev,
         { role: "ai", content: finalAiText, action: actionType },
       ]);
-
       isProcessingRef.current = false;
       if (endConversation) {
         isFluidModeRef.current = false;
@@ -475,7 +450,7 @@ GESTIÓN DEL MICRÓFONO:
     } catch (error) {
       setChatHistory((prev) => [
         ...prev,
-        { role: "ai", content: `⚠️ Error de conexión: ${error.message}` },
+        { role: "ai", content: `⚠️ Error: ${error.message}` },
       ]);
       isProcessingRef.current = false;
       if (isFluidModeRef.current) setTimeout(startListening, 1500);
@@ -489,16 +464,12 @@ GESTIÓN DEL MICRÓFONO:
       <div className="w-full max-w-md h-full md:h-[92vh] md:max-h-[850px] md:rounded-[3rem] bg-white shadow-[0_20px_50px_rgba(0,0,0,0.1)] overflow-hidden flex flex-col relative md:border-[10px] border-[#1e293b]">
         <div className="hidden md:block h-6 w-1/3 bg-[#1e293b] absolute top-0 left-1/2 -translate-x-1/2 rounded-b-2xl z-30"></div>
 
-        {/* Cabecera */}
         <div className="bg-white px-6 pt-8 pb-3 flex flex-col z-10 border-b border-slate-50 shrink-0">
           <div className="flex justify-between items-center mb-3">
             <MicroSmartLogo className="h-[84px] w-auto flex items-center" />
             <div className="flex space-x-1">
               <button className="p-2 hover:bg-slate-100 rounded-full transition-colors relative">
                 <Bell size={20} className="text-slate-600" />
-                {messagesList.length > 0 && (
-                  <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white"></span>
-                )}
               </button>
               <button className="p-2 hover:bg-slate-100 rounded-full transition-colors">
                 <Menu size={20} className="text-slate-600" />
@@ -521,7 +492,6 @@ GESTIÓN DEL MICRÓFONO:
           </div>
         </div>
 
-        {/* Contenido */}
         <div className="flex-1 overflow-y-auto pb-24 px-6 pt-2 scrollbar-hide">
           {activeTab === "home" && (
             <div className="flex flex-col items-center space-y-8 py-8 animate-in fade-in zoom-in duration-500">
@@ -663,28 +633,72 @@ GESTIÓN DEL MICRÓFONO:
           )}
 
           {activeTab === "history" && (
-            <div className="animate-in fade-in slide-in-from-right-4 duration-500 py-4 px-6">
-              <h2 className="text-xl font-black text-slate-800 mb-6">
-                Actividad
-              </h2>
+            <div className="animate-in fade-in slide-in-from-right-4 duration-500 py-4">
+              <div className="flex justify-between items-center mb-6">
+                <h2 className="text-xl font-black text-slate-800 tracking-tight">
+                  Registro
+                </h2>
+                <button
+                  onClick={handleSummarizeActivity}
+                  disabled={isSummarizing}
+                  className="flex items-center space-x-1 bg-[#00479b] text-white px-3 py-1.5 rounded-full text-[10px] font-bold shadow-lg shadow-blue-900/20 active:scale-95 transition-all"
+                >
+                  {isSummarizing ? (
+                    <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                  ) : (
+                    <Sparkles size={12} />
+                  )}
+                  <span>✨ RESUMIR</span>
+                </button>
+              </div>
+              {activitySummary && (
+                <div className="mb-6 bg-blue-50 p-4 rounded-3xl border border-blue-100 animate-in slide-in-from-top-2">
+                  <h4 className="text-[10px] font-black text-[#00479b] mb-1 uppercase tracking-widest flex items-center">
+                    <FileText size={12} className="mr-1" /> Resumen IA
+                  </h4>
+                  <p className="text-xs text-slate-700 leading-relaxed font-medium">
+                    {activitySummary}
+                  </p>
+                  <button
+                    onClick={() => setActivitySummary("")}
+                    className="mt-2 text-[9px] font-bold text-slate-400 hover:text-slate-600 underline"
+                  >
+                    Cerrar resumen
+                  </button>
+                </div>
+              )}
               <div className="space-y-3">
                 {historyLog.map((log) => (
                   <div
                     key={log.id}
                     className="bg-white p-4 rounded-3xl shadow-sm border border-slate-100 flex items-center space-x-3"
                   >
-                    <div className="p-2.5 rounded-xl bg-blue-100 text-[#00479b]">
-                      <User size={18} />
+                    <div
+                      className={`p-2.5 rounded-xl ${
+                        log.type === "ai_open"
+                          ? "bg-green-100 text-[#7bc100]"
+                          : "bg-blue-100 text-[#00479b]"
+                      } `}
+                    >
+                      {log.type === "ai_open" ? (
+                        <Package size={18} />
+                      ) : (
+                        <User size={18} />
+                      )}
                     </div>
                     <div className="flex-1">
-                      <h4 className="font-bold text-slate-800 text-xs">
+                      <h4 className="font-bold text-slate-800 text-xs mb-1">
                         {log.title}
                       </h4>
-                      <p className="text-[10px] text-slate-500">{log.desc}</p>
+                      <p className="text-[10px] text-slate-500 truncate">
+                        {log.desc}
+                      </p>
                     </div>
-                    <span className="text-[10px] font-black text-slate-700">
-                      {log.time}
-                    </span>
+                    <div className="text-right shrink-0">
+                      <span className="text-[10px] font-black text-slate-700 block">
+                        {log.time}
+                      </span>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -692,7 +706,7 @@ GESTIÓN DEL MICRÓFONO:
           )}
 
           {activeTab === "messages" && (
-            <div className="animate-in fade-in slide-in-from-right-4 duration-500 py-4 px-6">
+            <div className="animate-in fade-in slide-in-from-right-4 duration-500 py-4">
               <h2 className="text-xl font-black text-slate-800 mb-6 tracking-tight">
                 Recados
               </h2>
@@ -729,20 +743,33 @@ GESTIÓN DEL MICRÓFONO:
                       <p className="text-xs text-slate-600 mb-4 font-medium italic">
                         "{msg.content}"
                       </p>
-                      <a
-                        href={`https://wa.me/${msg.phone.replace(
-                          /\D/g,
-                          ""
-                        )}?text=${encodeURIComponent(
-                          `Hola ${msg.recipient}, el Conserje MicroSmart tomó este recado para ti:\n\n"${msg.content}"`
-                        )}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex items-center justify-center w-full bg-[#25d366] hover:bg-[#128c7e] text-white py-2.5 rounded-xl text-[10px] font-black transition-all shadow-lg shadow-green-500/20"
-                      >
-                        <PhoneForwarded size={14} className="mr-2" /> REENVIAR
-                        WHATSAPP
-                      </a>
+                      <div className="flex space-x-2">
+                        <button
+                          onClick={() => handleDraftReply(msg)}
+                          disabled={draftingId === msg.id}
+                          className="flex-1 flex items-center justify-center bg-slate-800 text-white py-2.5 rounded-xl text-[10px] font-black transition-all shadow-lg active:scale-95"
+                        >
+                          {draftingId === msg.id ? (
+                            <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                          ) : (
+                            <Wand2 size={14} className="mr-2" />
+                          )}
+                          ✨ REDACTAR
+                        </button>
+                        <a
+                          href={`https://wa.me/${msg.phone.replace(
+                            /\D/g,
+                            ""
+                          )}?text=${encodeURIComponent(
+                            `Hola ${msg.recipient}, el Conserje MicroSmart tomó este recado para ti:\n\n"${msg.content}"`
+                          )}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="p-2.5 bg-[#25d366] text-white rounded-xl shadow-lg active:scale-95"
+                        >
+                          <PhoneForwarded size={16} />
+                        </a>
+                      </div>
                     </div>
                   ))
                 )}
@@ -751,10 +778,11 @@ GESTIÓN DEL MICRÓFONO:
           )}
 
           {activeTab === "settings" && (
-            <div className="animate-in fade-in slide-in-from-right-4 duration-500 py-4 px-6 space-y-6">
-              <h2 className="text-xl font-black text-slate-800 mb-6">
-                Ajustes
+            <div className="animate-in fade-in slide-in-from-right-4 duration-500 space-y-5 py-4">
+              <h2 className="text-xl font-black text-slate-800 mb-6 tracking-tight">
+                Configuración
               </h2>
+
               <div className="bg-white rounded-3xl p-5 shadow-sm border border-slate-100">
                 <div className="flex items-center space-x-3 mb-4">
                   <UserPlus size={18} className="text-[#00479b]" />
@@ -762,30 +790,83 @@ GESTIÓN DEL MICRÓFONO:
                     Personas Autorizadas
                   </h3>
                 </div>
-                <div className="space-y-2">
+
+                <div className="space-y-2 mb-4">
                   {authorizedNames.map((person, index) => (
                     <div
                       key={index}
                       className="flex justify-between items-center bg-slate-50 p-2.5 rounded-xl border border-slate-100"
                     >
-                      <span className="text-xs font-bold text-slate-700">
-                        {person.name}
-                      </span>
+                      <div className="overflow-hidden">
+                        <span className="text-xs font-bold text-slate-700 block truncate">
+                          {person.name}
+                        </span>
+                        <span className="text-[9px] text-slate-400 font-bold">
+                          {person.phone}
+                        </span>
+                      </div>
                       <button
                         onClick={() => handleRemoveName(person.name)}
-                        className="text-red-400 p-1"
+                        className="text-red-400 p-2 hover:bg-red-50 rounded-lg"
                       >
                         <X size={16} />
                       </button>
                     </div>
                   ))}
                 </div>
+
+                <div className="space-y-2">
+                  <input
+                    type="text"
+                    value={newName}
+                    onChange={(e) => setNewName(e.target.value)}
+                    placeholder="Nombre completo"
+                    className="w-full bg-slate-50 border border-slate-200 text-base text-slate-800 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#7bc100]/20"
+                  />
+                  <div className="flex space-x-2">
+                    <div className="flex-1 bg-slate-50 border border-slate-200 rounded-lg flex items-center px-3">
+                      <span className="text-slate-400 text-sm font-bold border-r border-slate-200 pr-2 mr-2">
+                        +34
+                      </span>
+                      <input
+                        type="tel"
+                        value={newPhone}
+                        onChange={(e) => setNewPhone(e.target.value)}
+                        placeholder="Teléfono"
+                        className="bg-transparent text-base text-slate-800 w-full py-2.5 focus:outline-none"
+                      />
+                    </div>
+                    <button
+                      onClick={handleAddName}
+                      className="bg-[#00479b] text-white px-4 rounded-lg text-xs font-bold shadow-lg shadow-blue-900/20 active:scale-95 transition-all"
+                    >
+                      OK
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-white rounded-3xl p-5 shadow-sm border border-slate-100 space-y-1">
+                <button className="w-full flex justify-between items-center p-2.5 hover:bg-slate-50 rounded-xl transition-all">
+                  <div className="flex items-center space-x-3">
+                    <Wifi size={18} className="text-slate-400" />
+                    <span className="text-xs font-bold text-slate-700">
+                      Configurar WiFi
+                    </span>
+                  </div>
+                  <ChevronRight size={16} className="text-slate-300" />
+                </button>
+                <button className="w-full flex justify-between items-center p-2.5 hover:bg-red-50 rounded-xl transition-all text-red-500">
+                  <div className="flex items-center space-x-3">
+                    <LogOut size={18} />
+                    <span className="text-xs font-bold">Desconectar App</span>
+                  </div>
+                </button>
               </div>
             </div>
           )}
         </div>
 
-        {/* Menú Dock */}
         <div className="absolute bottom-4 left-1/2 -translate-x-1/2 w-[92%] bg-white/95 backdrop-blur-xl border border-white/50 px-2 py-2 flex justify-between items-center z-20 rounded-[2rem] shadow-2xl">
           <NavItem
             active={activeTab === "home"}
@@ -803,8 +884,8 @@ GESTIÓN DEL MICRÓFONO:
             active={activeTab === "messages"}
             onClick={() => setActiveTab("messages")}
             icon={<MessageSquare size={22} />}
-            label="Recados"
             badge={messagesList.length}
+            label="Recados"
           />
           <NavItem
             active={activeTab === "ai"}
