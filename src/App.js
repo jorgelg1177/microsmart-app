@@ -33,7 +33,6 @@ const fetchWithRetry = async (url, options, retries = 2, delay = 1000) => {
     if (!res.ok) {
       const errorData = await res.json().catch(() => null);
       console.error("Error de API:", res.status, errorData);
-      // Fallar rápido si es un error de clave, cuota o formato para no bloquear la app
       if (res.status === 400 || res.status === 403 || res.status === 429) {
         throw new Error(
           `Error de Google (${res.status}): ${
@@ -104,11 +103,16 @@ export default function App() {
   const [chatInput, setChatInput] = useState("");
   const [isTyping, setIsTyping] = useState(false);
 
-  // Estados para Voz Fluida
+  // Estados para UI
   const [isListening, setIsListening] = useState(false);
   const [isFluidMode, setIsFluidMode] = useState(false);
 
-  // Historial para mostrar en pantalla (incluye el saludo inicial)
+  // Referencias CRÍTICAS para el Bucle de Voz (Semáforos)
+  const isFluidModeRef = useRef(false);
+  const isProcessingRef = useRef(false);
+  const isSpeakingRef = useRef(false);
+  const recognitionRef = useRef(null);
+
   const [chatHistory, setChatHistory] = useState([
     {
       role: "ai",
@@ -116,37 +120,73 @@ export default function App() {
         "Hola, soy el conserje de MicroSmart. ¿Con quién hablo y en qué le puedo ayudar?",
     },
   ]);
-
-  // Historial estricto para enviar a la API (solo user/model, empezando por user)
   const [apiHistory, setApiHistory] = useState([]);
-
   const chatEndRef = useRef(null);
-  const recognitionRef = useRef(null);
 
-  // --- LÓGICA DE VOZ Y SÍNTESIS ---
+  // Precargar las voces del sistema al iniciar
+  useEffect(() => {
+    if ("speechSynthesis" in window) {
+      window.speechSynthesis.getVoices();
+      window.speechSynthesis.onvoiceschanged = () => {
+        window.speechSynthesis.getVoices();
+      };
+    }
+  }, []);
+
+  // --- LÓGICA DE VOZ Y SÍNTESIS MEJORADA ---
   const speakResponse = (text) => {
     if ("speechSynthesis" in window) {
-      window.speechSynthesis.cancel();
+      window.speechSynthesis.cancel(); // Parar cualquier audio previo
+
       const cleanText = text.replace(/\[.*?\]/g, "").trim();
 
-      if (!cleanText) return;
+      if (!cleanText) {
+        isProcessingRef.current = false;
+        if (isFluidModeRef.current) setTimeout(startListening, 300);
+        return;
+      }
 
       const utterance = new SpeechSynthesisUtterance(cleanText);
       utterance.lang = "es-ES";
+
+      // Búsqueda inteligente de voces más naturales (Google, Premium, Mónica, Jorge...)
+      const voices = window.speechSynthesis.getVoices();
+      let bestVoice = voices.find(
+        (v) =>
+          (v.lang.startsWith("es-") || v.lang === "es") &&
+          (v.name.toLowerCase().includes("google") ||
+            v.name.toLowerCase().includes("premium") ||
+            v.name.toLowerCase().includes("natural"))
+      );
+      // Si no encuentra una premium, coge la primera en español disponible
+      if (!bestVoice)
+        bestVoice = voices.find(
+          (v) => v.lang.startsWith("es-") || v.lang === "es"
+        );
+
+      if (bestVoice) {
+        utterance.voice = bestVoice;
+      }
+
       utterance.rate = 1.0;
+      utterance.pitch = 1.05; // Tono ligeramente más alto para sonar menos metálico
+
+      // Activamos el semáforo de que el conserje está hablando
+      isSpeakingRef.current = true;
 
       utterance.onend = () => {
-        if (isFluidMode) {
-          setTimeout(() => {
-            startVoiceRecognition();
-          }, 300);
+        isSpeakingRef.current = false;
+        // Solo reactivamos el micro si seguimos en modo fluido
+        if (isFluidModeRef.current) {
+          setTimeout(startListening, 300);
         }
       };
 
       utterance.onerror = (e) => {
         console.error("Error en síntesis de voz:", e);
-        if (isFluidMode) {
-          setTimeout(startVoiceRecognition, 1000);
+        isSpeakingRef.current = false;
+        if (isFluidModeRef.current) {
+          setTimeout(startListening, 500);
         }
       };
 
@@ -154,12 +194,12 @@ export default function App() {
     }
   };
 
-  const startVoiceRecognition = () => {
+  const startListening = () => {
     const SpeechRecognition =
       window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SpeechRecognition) {
       alert("El reconocimiento de voz no está soportado en este navegador.");
-      setIsFluidMode(false);
+      if (isFluidModeRef.current) toggleFluidMode();
       return;
     }
 
@@ -170,11 +210,34 @@ export default function App() {
       recognitionRef.current.continuous = false;
 
       recognitionRef.current.onstart = () => setIsListening(true);
-      recognitionRef.current.onend = () => setIsListening(false);
+
+      recognitionRef.current.onend = () => {
+        setIsListening(false);
+        // BUCLE INFALIBLE: Si estamos en modo fluido, y NO estamos procesando datos, y el bot NO está hablando... reactivamos.
+        if (
+          isFluidModeRef.current &&
+          !isProcessingRef.current &&
+          !isSpeakingRef.current
+        ) {
+          setTimeout(() => {
+            if (
+              isFluidModeRef.current &&
+              !isProcessingRef.current &&
+              !isSpeakingRef.current
+            ) {
+              try {
+                recognitionRef.current.start();
+              } catch (e) {}
+            }
+          }, 300);
+        }
+      };
 
       recognitionRef.current.onresult = (event) => {
         const transcript = event.results[0][0].transcript;
         if (transcript.trim()) {
+          // Bloqueamos el bucle temporalmente para pensar
+          isProcessingRef.current = true;
           recognitionRef.current.stop();
           handleSimulateVisitor(transcript);
         }
@@ -182,30 +245,48 @@ export default function App() {
 
       recognitionRef.current.onerror = (event) => {
         setIsListening(false);
-        if (isFluidMode && event.error === "no-speech") {
-          setTimeout(startVoiceRecognition, 1000);
-        } else if (isFluidMode && event.error !== "aborted") {
+        // Si no detecta voz o hay un pequeño error, el evento onend se disparará
+        // y nuestro "BUCLE INFALIBLE" de arriba lo reiniciará automáticamente.
+        if (
+          event.error === "not-allowed" ||
+          event.error === "service-not-allowed"
+        ) {
+          // Solo apagamos todo si el usuario denegó permisos
+          isFluidModeRef.current = false;
           setIsFluidMode(false);
         }
       };
     }
 
-    try {
-      recognitionRef.current.start();
-    } catch (e) {
-      console.warn("Reconocimiento ya iniciado");
+    // Iniciamos la escucha si todos los semáforos están en verde
+    if (
+      isFluidModeRef.current &&
+      !isProcessingRef.current &&
+      !isSpeakingRef.current
+    ) {
+      try {
+        recognitionRef.current.start();
+      } catch (e) {
+        // Ya estaba escuchando, ignoramos
+      }
     }
   };
 
   const toggleFluidMode = () => {
-    if (isFluidMode) {
+    if (isFluidModeRef.current) {
+      // APAGAR MODO FLUIDO
+      isFluidModeRef.current = false;
       setIsFluidMode(false);
       setIsListening(false);
+      isProcessingRef.current = false;
+      isSpeakingRef.current = false;
       if (recognitionRef.current) recognitionRef.current.stop();
       window.speechSynthesis.cancel();
     } else {
+      // ENCENDER MODO FLUIDO
+      isFluidModeRef.current = true;
       setIsFluidMode(true);
-      startVoiceRecognition();
+      startListening();
     }
   };
 
@@ -295,12 +376,15 @@ export default function App() {
     const textToSend = textOverride || chatInput;
     if (!textToSend.trim() || isTyping) return;
 
+    // Aseguramos que los semáforos de procesamiento estén encendidos
+    isProcessingRef.current = true;
+    if (recognitionRef.current) recognitionRef.current.stop();
+
     // Actualizamos visualización
     setChatHistory((prev) => [...prev, { role: "user", content: textToSend }]);
     setChatInput("");
     setIsTyping(true);
 
-    // NUEVA CLAVE API INSTALADA AQUÍ
     const apiKey = "AIzaSyD06jLabAFFFMxiZq0RAKQ7p5sWtwd8Mgw";
     const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
     const allowedNamesList =
@@ -322,7 +406,6 @@ PROTOCOLO:
 - VISITA: Si valida nombre completo y no estás, ofrece recado. Usa exactamente la etiqueta: [MENSAJE_PARA | NombreAutorizado | texto]
 - RECHAZO: Si no coincide nombre, rechaza educadamente. Usa exactamente la etiqueta: [ACCESO_DENEGADO | Motivo]`;
 
-    // Preparamos los contenidos estrictamente para la API
     const newApiMsg = { role: "user", parts: [{ text: textToSend }] };
 
     let validApiHistory = [...apiHistory];
@@ -349,7 +432,6 @@ PROTOCOLO:
 
       if (!aiText) throw new Error("Respuesta vacía de la IA.");
 
-      // Si todo fue bien, actualizamos el historial estricto de la API
       setApiHistory([
         ...contents,
         { role: "model", parts: [{ text: aiText }] },
@@ -366,19 +448,23 @@ PROTOCOLO:
         { role: "ai", content: finalAiText, action: actionType },
       ]);
 
+      // Apagamos semáforo de procesar antes de hablar
+      isProcessingRef.current = false;
       speakResponse(finalAiText);
     } catch (error) {
       console.error("Fetch error capturado:", error);
-      // Imprimimos el error técnico directamente para ayudar al diagnóstico rápido si falla algo.
       setChatHistory((prev) => [
         ...prev,
         {
           role: "ai",
-          content: `⚠️ Sistema: ${error.message}`,
+          content: `⚠️ Error de red. Repita.`,
         },
       ]);
 
-      if (isFluidMode) setIsFluidMode(false);
+      isProcessingRef.current = false;
+      if (isFluidModeRef.current) {
+        setTimeout(startListening, 1500); // Reintenta escuchar tras un error leve
+      }
     } finally {
       setIsTyping(false);
     }
@@ -508,7 +594,7 @@ PROTOCOLO:
                       isFluidMode
                         ? "bg-green-100 text-green-700"
                         : "bg-slate-100 text-slate-500"
-                    } text-[8px] font-black rounded-full`}
+                    } text-[8px] font-black rounded-full transition-colors`}
                   >
                     {isFluidMode ? "CONSERJE DESPIERTO" : "MODO DORMIDO"}
                   </div>
@@ -560,8 +646,8 @@ PROTOCOLO:
                       isFluidMode
                         ? isListening
                           ? "bg-red-500 scale-110 animate-pulse ring-8 ring-red-100"
-                          : "bg-green-500 ring-8 ring-green-50"
-                        : "bg-slate-200"
+                          : "bg-amber-400 ring-8 ring-amber-50"
+                        : "bg-slate-200 hover:bg-slate-300"
                     }`}
                   >
                     {isFluidMode ? (
@@ -574,12 +660,12 @@ PROTOCOLO:
                       <MicOff size={32} className="text-slate-400" />
                     )}
                   </button>
-                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest text-center transition-all">
                     {isFluidMode
                       ? isListening
-                        ? "Habla ahora..."
-                        : "Conserje procesando..."
-                      : "Toca el micro para despertar al conserje"}
+                        ? "Escuchando..."
+                        : "Conserje hablando..."
+                      : "Toca el micro para despertar"}
                   </p>
 
                   <div className="w-full relative flex items-center mt-2 opacity-50 focus-within:opacity-100 transition-opacity">
@@ -590,7 +676,7 @@ PROTOCOLO:
                       onKeyPress={(e) =>
                         e.key === "Enter" && handleSimulateVisitor()
                       }
-                      placeholder="Escribe algo..."
+                      placeholder="O escribe algo..."
                       className="w-full bg-slate-50 text-base text-slate-800 rounded-xl px-4 py-3 focus:outline-none border border-slate-100"
                     />
                     <button
