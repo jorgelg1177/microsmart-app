@@ -28,9 +28,6 @@ import {
   FileText,
 } from "lucide-react";
 
-/**
- * Función de utilidad para llamadas a la API con reintentos automáticos
- */
 const fetchWithRetry = async (url, options, retries = 2, delay = 1000) => {
   try {
     const res = await fetch(url, options);
@@ -129,13 +126,9 @@ export default function App() {
   const [apiHistory, setApiHistory] = useState([]);
 
   // =========================================================================
-  // --- CONFIGURACIÓN DE IA Y ESP32 ---
-  // =========================================================================
   const apiKey = process.env.REACT_APP_GEMINI_API_KEY;
   const aiModel = "gemini-2.5-flash";
-
-  // ⚠️ CAMBIA ESTO POR LA IP QUE TE DE EL ARDUINO EN EL MONITOR SERIE:
-  const esp32IP = "http://192.168.1.145";
+  const firebaseUrl = process.env.REACT_APP_FIREBASE_URL; // SE LEE DEL .ENV
   // =========================================================================
 
   useEffect(() => {
@@ -151,14 +144,11 @@ export default function App() {
   }, []);
 
   const handleSummarizeActivity = async () => {
-    if (!apiKey) {
-      setActivitySummary("Falta configurar la clave API.");
-      return;
-    }
-    if (historyLog.length === 0) {
-      setActivitySummary("No hay actividad registrada hoy para resumir.");
-      return;
-    }
+    if (!apiKey) return setActivitySummary("Falta configurar la clave API.");
+    if (historyLog.length === 0)
+      return setActivitySummary(
+        "No hay actividad registrada hoy para resumir."
+      );
     if (isSummarizing) return;
     setIsSummarizing(true);
     const activityData = historyLog
@@ -184,10 +174,7 @@ export default function App() {
   };
 
   const handleDraftReply = async (message) => {
-    if (!apiKey) {
-      alert("Falta configurar la clave API.");
-      return;
-    }
+    if (!apiKey) return alert("Falta configurar la clave API.");
     setDraftingId(message.id);
     const prompt = `Redacta una respuesta de WhatsApp muy corta y amable para este recado: "${message.content}"`;
     try {
@@ -222,7 +209,6 @@ export default function App() {
       const utterance = new SpeechSynthesisUtterance(cleanText);
       utterance.lang = "es-ES";
       const voices = window.speechSynthesis.getVoices();
-
       let bestVoice = voices.find(
         (v) =>
           (v.lang.startsWith("es-") || v.lang === "es") &&
@@ -236,7 +222,6 @@ export default function App() {
         bestVoice = voices.find(
           (v) => v.lang.startsWith("es-") || v.lang === "es"
         );
-
       if (bestVoice) utterance.voice = bestVoice;
       utterance.rate = 1.0;
       utterance.pitch = 1.0;
@@ -363,13 +348,22 @@ export default function App() {
     );
   };
 
-  // --- FUNCIÓN QUE ENVÍA LA ORDEN FÍSICA AL ESP32 MANUALMENTE ---
+  // --- ORDEN FÍSICA VÍA FIREBASE (NUBE) ---
   const handleOpenDoor = async () => {
     if (doorStatus !== "idle") return;
     setDoorStatus("opening");
 
     try {
-      await fetch(`${esp32IP}/abrir`);
+      if (!firebaseUrl)
+        throw new Error("Falta la URL de Firebase en el archivo .env");
+
+      // Enviamos la palabra "ABRIR" a Firebase
+      await fetch(`${firebaseUrl}/puerta.json`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify("ABRIR"),
+      });
+
       setDoorStatus("opened");
       setHistoryLog((prev) => [
         {
@@ -383,9 +377,9 @@ export default function App() {
         ...prev,
       ]);
     } catch (error) {
-      console.error("Error al conectar con el hardware:", error);
+      console.error("Error al conectar con la nube:", error);
       alert(
-        "No se pudo conectar con el interfono. ¿Estás en la misma red WiFi que el ESP32?"
+        "Error de conexión. Revisa que configuraste bien REACT_APP_FIREBASE_URL."
       );
     } finally {
       setTimeout(() => setDoorStatus("idle"), 2000);
@@ -408,7 +402,6 @@ export default function App() {
 
     isProcessingRef.current = true;
     if (recognitionRef.current) recognitionRef.current.stop();
-
     setChatHistory((prev) => [...prev, { role: "user", content: textToSend }]);
     setChatInput("");
     setIsTyping(true);
@@ -423,29 +416,26 @@ export default function App() {
 REGLAS ESTRICTAS:
 1. RÁPIDO PERO EDUCADO: Habla con frases de máximo 10-15 palabras. Ve directo al grano, pero SIEMPRE saluda al iniciar ("Hola") y SIEMPRE despídete al terminar ("Gracias. Hasta luego."). Usa "por favor".
 2. PRIVACIDAD: NUNCA digas apellidos. Si dicen un nombre de pila, pregunta rápido: "¿Me indica el apellido, por favor?".
-3. FLEXIBILIDAD DE APELLIDOS (¡IMPORTANTE!): Para verificar a un propietario, basta con que el visitante diga el NOMBRE CORRECTO y AL MENOS UN APELLIDO CORRECTO de la lista. (Ejemplo: Si en la lista está "Karla León Núñez", debes aceptar como válido "Karla León", "Karla Núñez" o "Karla León Núñez").
-4. REGLA DE PACIENCIA: Si fallan el nombre/apellido, di rápido: "Aquí no reside nadie con ese nombre". ¡ESPERA SU RESPUESTA! No cortes la comunicación de golpe, dales oportunidad de corregirse.
-5. FRASE PARA PAQUETES: Si verificas empresa y destinatario válido (nombre + al menos 1 apellido), di EXACTAMENTE: "Puede pasar. Deje el paquete dentro y cierre. Gracias. Hasta luego."
+3. FLEXIBILIDAD DE APELLIDOS: Para verificar a un propietario, basta con que diga el NOMBRE CORRECTO y AL MENOS UN APELLIDO CORRECTO de la lista. 
+4. REGLA DE PACIENCIA: Si fallan el nombre/apellido, di rápido: "Aquí no reside nadie con ese nombre". ¡ESPERA SU RESPUESTA! No cortes la comunicación de golpe.
+5. FRASE PARA PAQUETES: Si verificas empresa y destinatario válido, di EXACTAMENTE: "Puede pasar. Deje el paquete dentro y cierre. Gracias. Hasta luego."
 6. RECHAZO: Si vas a denegar el paso definitivamente, hazlo amablemente.
 
 LISTA DE PROPIETARIOS AUTORIZADOS: [${allowedNamesList}].
 
-ETIQUETAS SECRETAS (Añade una al final según corresponda):
+ETIQUETAS SECRETAS:
 A. REPARTIDOR VERIFICADO: [ABRIR_PUERTA | Empresa | Destinatario]
-B. VISITA VERIFICADA (ofrece recado rápido): [MENSAJE_PARA | NombreAutorizado | texto]
+B. VISITA VERIFICADA: [MENSAJE_PARA | NombreAutorizado | texto]
 C. RECHAZO DEFINITIVO: [ACCESO_DENEGADO | Motivo]
 
-¡REGLA DE COLGAR LA LLAMADA! (MUY IMPORTANTE):
-Añade la etiqueta [FIN_CONVERSACION] ÚNICAMENTE cuando ocurra una de estas cosas:
-- Ya le has dado permiso para entrar (al repartidor).
-- Ya has guardado el recado y te despides.
-- El visitante se despide explícitamente (ej. "adiós", "vale", "me voy").
-- El visitante insiste 3 veces seguidas con nombres que no coinciden en nada.
-NUNCA uses [FIN_CONVERSACION] a la primera equivocación.`;
+¡REGLA DE COLGAR! [FIN_CONVERSACION] ÚNICAMENTE cuando:
+- Ya has dado permiso (repartidor).
+- Ya has guardado el recado.
+- El visitante se despide.
+- Insiste 3 veces fallidas.`;
 
     let validApiHistory = [...apiHistoryRef.current];
     let combinedText = textToSend;
-
     if (
       validApiHistory.length > 0 &&
       validApiHistory[validApiHistory.length - 1].role === "user"
@@ -488,11 +478,15 @@ NUNCA uses [FIN_CONVERSACION] a la primera equivocación.`;
         const empresa = abrirMatch[1].trim();
         const destinatario = abrirMatch[2].trim();
 
-        // --- LA IA MANDA LA ORDEN FÍSICA AL ESP32 ---
-        fetch(`${esp32IP}/abrir`).catch((e) =>
-          console.error("Error enviando señal al ESP32:", e)
-        );
-        // --------------------------------------------
+        // --- LA IA MANDA LA ORDEN A FIREBASE ---
+        if (firebaseUrl) {
+          fetch(`${firebaseUrl}/puerta.json`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify("ABRIR"),
+          }).catch((e) => console.error("Error en nube:", e));
+        }
+        // --------------------------------------
 
         setHistoryLog((prev) => [
           {
@@ -588,7 +582,6 @@ NUNCA uses [FIN_CONVERSACION] a la primera equivocación.`;
     <div className="fixed inset-0 w-screen h-[100dvh] bg-[#f3f4f6] flex items-center justify-center font-sans text-slate-900 overflow-hidden">
       <div className="w-full max-w-md h-full md:h-[92vh] md:max-h-[850px] md:rounded-[3rem] bg-white shadow-[0_20px_50px_rgba(0,0,0,0.1)] overflow-hidden flex flex-col relative md:border-[10px] border-[#1e293b]">
         <div className="hidden md:block h-6 w-1/3 bg-[#1e293b] absolute top-0 left-1/2 -translate-x-1/2 rounded-b-2xl z-30"></div>
-
         <div className="bg-white px-6 pt-8 pb-3 flex flex-col z-10 border-b border-slate-50 shrink-0">
           <div className="flex justify-between items-center mb-3">
             <MicroSmartLogo className="h-[84px] w-auto flex items-center" />
@@ -616,7 +609,6 @@ NUNCA uses [FIN_CONVERSACION] a la primera equivocación.`;
             </div>
           </div>
         </div>
-
         <div className="flex-1 overflow-y-auto pb-24 px-6 pt-2 scrollbar-hide">
           {activeTab === "home" && (
             <div className="flex flex-col items-center space-y-8 py-8 animate-in fade-in zoom-in duration-500">
@@ -664,7 +656,6 @@ NUNCA uses [FIN_CONVERSACION] a la primera equivocación.`;
               </button>
             </div>
           )}
-
           {activeTab === "ai" && (
             <div className="flex flex-col h-full animate-in slide-in-from-bottom-4 duration-500 bg-slate-50 -mx-6 rounded-t-[2.5rem] overflow-hidden border-t border-slate-200">
               <div className="p-5 pb-2 flex justify-between items-center bg-white/50 backdrop-blur-sm sticky top-0 z-10">
@@ -756,7 +747,6 @@ NUNCA uses [FIN_CONVERSACION] a la primera equivocación.`;
               </div>
             </div>
           )}
-
           {activeTab === "history" && (
             <div className="animate-in fade-in slide-in-from-right-4 duration-500 py-4">
               <div className="flex justify-between items-center mb-6">
@@ -849,7 +839,6 @@ NUNCA uses [FIN_CONVERSACION] a la primera equivocación.`;
               </div>
             </div>
           )}
-
           {activeTab === "messages" && (
             <div className="animate-in fade-in slide-in-from-right-4 duration-500 py-4">
               <h2 className="text-xl font-black text-slate-800 mb-6 tracking-tight">
@@ -921,7 +910,6 @@ NUNCA uses [FIN_CONVERSACION] a la primera equivocación.`;
               </div>
             </div>
           )}
-
           {activeTab === "settings" && (
             <div className="animate-in fade-in slide-in-from-right-4 duration-500 space-y-5 py-4">
               <h2 className="text-xl font-black text-slate-800 mb-6 tracking-tight">
@@ -987,27 +975,9 @@ NUNCA uses [FIN_CONVERSACION] a la primera equivocación.`;
                   </div>
                 </div>
               </div>
-              <div className="bg-white rounded-3xl p-5 shadow-sm border border-slate-100 space-y-1">
-                <button className="w-full flex justify-between items-center p-2.5 hover:bg-slate-50 rounded-xl transition-all">
-                  <div className="flex items-center space-x-3">
-                    <Wifi size={18} className="text-slate-400" />
-                    <span className="text-xs font-bold text-slate-700">
-                      Configurar WiFi del ESP32
-                    </span>
-                  </div>
-                  <ChevronRight size={16} className="text-slate-300" />
-                </button>
-                <button className="w-full flex justify-between items-center p-2.5 hover:bg-red-50 rounded-xl transition-all text-red-500">
-                  <div className="flex items-center space-x-3">
-                    <LogOut size={18} />
-                    <span className="text-xs font-bold">Desconectar App</span>
-                  </div>
-                </button>
-              </div>
             </div>
           )}
         </div>
-
         <div className="absolute bottom-4 left-1/2 -translate-x-1/2 w-[92%] bg-white/95 backdrop-blur-xl border border-white/50 px-2 py-2 flex justify-between items-center z-20 rounded-[2rem] shadow-2xl">
           <NavItem
             active={activeTab === "home"}
