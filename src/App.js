@@ -176,7 +176,7 @@ export default function App() {
 
       utterance.onend = () => {
         isSpeakingRef.current = false;
-        // Solo reactivamos el micro si seguimos en modo fluido
+        // Solo reactivamos el micro si seguimos en modo fluido (si no se cortó por [FIN_CONVERSACION])
         if (isFluidModeRef.current) {
           setTimeout(startListening, 300);
         }
@@ -199,7 +199,7 @@ export default function App() {
       window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SpeechRecognition) {
       alert("El reconocimiento de voz no está soportado en este navegador.");
-      if (isFluidModeRef.current) toggleFluidMode();
+      stopFluidMode();
       return;
     }
 
@@ -252,8 +252,7 @@ export default function App() {
           event.error === "service-not-allowed"
         ) {
           // Solo apagamos todo si el usuario denegó permisos
-          isFluidModeRef.current = false;
-          setIsFluidMode(false);
+          stopFluidMode();
         }
       };
     }
@@ -272,18 +271,26 @@ export default function App() {
     }
   };
 
+  const stopFluidMode = () => {
+    isFluidModeRef.current = false;
+    setIsFluidMode(false);
+    setIsListening(false);
+    isProcessingRef.current = false;
+    isSpeakingRef.current = false;
+    if (recognitionRef.current) recognitionRef.current.stop();
+    window.speechSynthesis.cancel();
+  };
+
   const toggleFluidMode = () => {
     if (isFluidModeRef.current) {
-      // APAGAR MODO FLUIDO
-      isFluidModeRef.current = false;
-      setIsFluidMode(false);
-      setIsListening(false);
-      isProcessingRef.current = false;
-      isSpeakingRef.current = false;
-      if (recognitionRef.current) recognitionRef.current.stop();
-      window.speechSynthesis.cancel();
+      stopFluidMode();
     } else {
-      // ENCENDER MODO FLUIDO
+      // HACK PARA MÓVILES: Desbloquear el motor de audio de iOS/Android al instante del toque.
+      if ("speechSynthesis" in window) {
+        const unlockUtterance = new SpeechSynthesisUtterance("");
+        window.speechSynthesis.speak(unlockUtterance);
+      }
+
       isFluidModeRef.current = true;
       setIsFluidMode(true);
       startListening();
@@ -404,7 +411,10 @@ PERSONAS AUTORIZADAS: [${allowedNamesList}].
 PROTOCOLO:
 - REPARTIDOR: Debe decir EMPRESA y DESTINATARIO. Si es correcto, abre. Usa exactamente la etiqueta: [ABRIR_PUERTA | Empresa | Destinatario]
 - VISITA: Si valida nombre completo y no estás, ofrece recado. Usa exactamente la etiqueta: [MENSAJE_PARA | NombreAutorizado | texto]
-- RECHAZO: Si no coincide nombre, rechaza educadamente. Usa exactamente la etiqueta: [ACCESO_DENEGADO | Motivo]`;
+- RECHAZO: Si no coincide nombre, rechaza educadamente. Usa exactamente la etiqueta: [ACCESO_DENEGADO | Motivo]
+
+FINALIZACIÓN (¡MUY IMPORTANTE!):
+Si la interacción ha terminado por cualquier motivo (ya abriste la puerta, tomaste el recado, o el visitante se despide), DEBES incluir EXACTAMENTE la etiqueta: [FIN_CONVERSACION] al final de tu mensaje para apagar el sistema.`;
 
     const newApiMsg = { role: "user", parts: [{ text: textToSend }] };
 
@@ -438,9 +448,17 @@ PROTOCOLO:
       ]);
 
       let actionType = null;
+      let endConversation = false;
+
+      // Evaluamos las etiquetas de acción
       if (aiText.includes("[ABRIR_PUERTA")) actionType = "opened";
       else if (aiText.includes("[MENSAJE_PARA")) actionType = "message_saved";
       else if (aiText.includes("[ACCESO_DENEGADO")) actionType = "denied";
+
+      // Evaluamos si el conserje da por finalizada la charla
+      if (aiText.includes("[FIN_CONVERSACION]")) {
+        endConversation = true;
+      }
 
       const finalAiText = aiText.replace(/\[.*?\]/g, "").trim();
       setChatHistory((prev) => [
@@ -450,6 +468,14 @@ PROTOCOLO:
 
       // Apagamos semáforo de procesar antes de hablar
       isProcessingRef.current = false;
+
+      // Si la IA decidió terminar la conversación, apagamos el modo fluido en la UI
+      // La voz se reproducirá pero el micrófono NO se volverá a abrir al terminar.
+      if (endConversation) {
+        isFluidModeRef.current = false;
+        setIsFluidMode(false);
+      }
+
       speakResponse(finalAiText);
     } catch (error) {
       console.error("Fetch error capturado:", error);
@@ -886,7 +912,7 @@ PROTOCOLO:
                   MICROSMART.ES
                 </p>
                 <p className="text-[8px] text-slate-300 font-bold mt-1 uppercase">
-                  Control Inteligente v1.5
+                  Control Inteligente v1.6
                 </p>
               </div>
             </div>
