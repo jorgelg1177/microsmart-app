@@ -158,7 +158,7 @@ export default function App() {
 
   const apiKey = part1 + part2 + part3 + part4;
 
-  const aiModel = "gemini-1.5-flash"; // Modelo principal estable
+  const aiModel = "gemini-pro"; // Cambiado a gemini-pro (modelo universal y más compatible) para evitar el error 404
 
   useEffect(() => {
     authorizedNamesRef.current = authorizedNames;
