@@ -151,7 +151,7 @@ export default function App() {
   // --- CONFIGURACIÓN DE IA CON VARIABLE DE ENTORNO ---
   // =========================================================================
   const apiKey = process.env.REACT_APP_GEMINI_API_KEY;
-  const aiModel = "gemini-2.5-flash-preview-09-2025";
+  const aiModel = "gemini-2.5-flash";
 
   useEffect(() => {
     authorizedNamesRef.current = authorizedNames;
