@@ -69,15 +69,6 @@ const fetchWithRetry = async (url, options, retries = 2, delay = 1000) => {
 
 const MicroSmartLogo = ({ className }) => (
   <div className={className}>
-    <img
-      src="/logo.png"
-      alt="MicroSmart Logo"
-      className="h-full w-auto object-contain"
-      onError={(e) => {
-        e.target.style.display = "none";
-        e.target.nextSibling.style.display = "block";
-      }}
-    />
     <span className="hidden font-black text-xl tracking-tighter text-slate-800 uppercase">
       MICRO<span className="text-[#7bc100]">SMART</span>
     </span>
@@ -148,8 +139,8 @@ export default function App() {
   const chatEndRef = useRef(null);
 
   // =========================================================================
-  // --- CONFIGURACIÓN DE IA (REVERSIÓN A LO QUE FUNCIONABA) ---
-  // Ponemos la clave completa y volvemos al modelo 2.5 Flash Preview.
+  // --- CONFIGURACIÓN DE IA (RESTAURACIÓN TOTAL) ---
+  // Clave completa y modelo original 2.5 Flash para máxima fluidez.
   // =========================================================================
   const apiKey = "AIzaSyCDxhTsxF-21aqUkqEnABbdlk0DQ9QARzk";
   const aiModel = "gemini-2.5-flash-preview-09-2025";
