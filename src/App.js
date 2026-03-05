@@ -394,24 +394,39 @@ export default function App() {
         ? authorizedNames.map((p) => p.name).join(", ")
         : "Nadie";
 
-    const systemPrompt = `Eres el CONSERJE INTELIGENTE de MicroSmart. 
-Misión: Gestionar el acceso con EXCELENCIA y SEGURIDAD.
-REGLAS:
-1. NO SEAS TONTO: Si el visitante ya te dio datos (nombre, empresa, destinatario), RECONÓCELOS. No preguntes lo que ya sabes.
-2. MEMORIA: Lee el historial antes de responder.
-3. SEGURIDAD: No confirmes nombres de propietarios si no los dicen bien.
-4. PROPIETARIOS: [${allowedNamesList}].
-ACCIONES: [ABRIR_PUERTA | Empresa | Destinatario] o [MENSAJE_PARA | NombreAutorizado | texto] o [ACCESO_DENEGADO | Motivo].
-Solo añade [FIN_CONVERSACION] si ya terminaste la gestión.`;
+    const systemPrompt = `Eres el CONSERJE VIRTUAL INTELIGENTE del edificio residencial MicroSmart. Trabajas para los propietarios.
 
-    const newApiMsg = { role: "user", parts: [{ text: textToSend }] };
+REGLAS ESTRICTAS DE INTELIGENCIA E IDENTIDAD (CUMPLE AL 100%):
+1. TU IDENTIDAD: Tú eres EXCLUSIVAMENTE el conserje de la puerta. NUNCA asumas el rol de un propietario. Si el visitante dice "Tengo un paquete para Carlos", NUNCA le respondas "Hola, soy Carlos". Debes responder "De acuerdo, verifico la autorización del señor Carlos...".
+2. PROHIBICIÓN ABSOLUTA DE SALUDAR DE NUEVO: La conversación ya está en curso y ya le dijiste "Hola" al inicio. BAJO NINGUNA CIRCUNSTANCIA vuelvas a decir "Hola", "Buenos días", "Buenas tardes" o "Bienvenido". Ve directamente al grano.
+3. MEMORIA PERFECTA: Lee TODO el historial. Si el visitante en un mensaje anterior o en el actual ya te dio su EMPRESA y el DESTINATARIO, NO le preguntes para quién es ni de dónde viene. Actúa inmediatamente.
+
+LISTA DE PROPIETARIOS AUTORIZADOS: [${allowedNamesList}].
+
+PROTOCOLO Y ETIQUETAS SECRETAS:
+A. REPARTIDORES: Si mencionan una EMPRESA (ej. Amazon, Correos) y un DESTINATARIO que está en la lista.
+   -> Responde que verificas y autorizas el paso. Usa al final: [ABRIR_PUERTA | Empresa | Destinatario]
+B. VISITAS PERSONALES: Si es una persona física buscando a alguien de la lista.
+   -> Responde que el anfitrión no puede atender la puerta pero ofrécele dejar un recado. Usa al final: [MENSAJE_PARA | NombreAutorizado | texto]
+C. DESCONOCIDOS O COMERCIALES: Si buscan a alguien que no está en la lista de Propietarios Autorizados.
+   -> Rechaza educadamente el paso indicando que esa persona no vive ahí. Usa al final: [ACCESO_DENEGADO | Motivo]
+
+IMPORTANTE: Solo añade [FIN_CONVERSACION] al final de tu mensaje cuando la gestión esté completamente terminada (ya autorizaste paso, tomaste recado o denegaste acceso). Si aún necesitas datos, NO lo uses para mantener el micrófono abierto.`;
+
     let validApiHistory = [...apiHistory];
+    let combinedText = textToSend;
+
+    // CORRECCIÓN VITAL: Si el usuario habló dos veces seguidas o la API falló,
+    // combinamos sus mensajes en lugar de borrar el primero, así la IA NO PIERDE CONTEXTO.
     if (
       validApiHistory.length > 0 &&
       validApiHistory[validApiHistory.length - 1].role === "user"
     ) {
-      validApiHistory.pop();
+      const lastMsg = validApiHistory.pop();
+      combinedText = lastMsg.parts[0].text + ". " + textToSend;
     }
+
+    const newApiMsg = { role: "user", parts: [{ text: combinedText }] };
     const contents = [...validApiHistory, newApiMsg];
 
     try {
@@ -421,26 +436,32 @@ Solo añade [FIN_CONVERSACION] si ya terminaste la gestión.`;
         body: JSON.stringify({
           systemInstruction: { parts: [{ text: systemPrompt }] },
           contents: contents,
-          generationConfig: { temperature: 0.7 },
+          generationConfig: { temperature: 0.3 }, // Temperatura baja para que sea más lógico y menos creativo/errático
         }),
       });
+
       let aiText = data.candidates?.[0]?.content?.parts?.[0]?.text;
       if (!aiText) throw new Error("Respuesta vacía.");
+
       setApiHistory([
         ...contents,
         { role: "model", parts: [{ text: aiText }] },
       ]);
+
       let actionType = null,
         endConversation = false;
       if (aiText.includes("[ABRIR_PUERTA")) actionType = "opened";
       else if (aiText.includes("[MENSAJE_PARA")) actionType = "message_saved";
       else if (aiText.includes("[ACCESO_DENEGADO")) actionType = "denied";
+
       if (aiText.includes("[FIN_CONVERSACION]")) endConversation = true;
+
       const finalAiText = aiText.replace(/\[.*?\]/g, "").trim();
       setChatHistory((prev) => [
         ...prev,
         { role: "ai", content: finalAiText, action: actionType },
       ]);
+
       isProcessingRef.current = false;
       if (endConversation) {
         isFluidModeRef.current = false;
