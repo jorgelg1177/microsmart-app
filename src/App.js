@@ -49,7 +49,6 @@ const MicroSmartLogo = ({ className }) => (
       alt="MicroSmart Logo"
       className="h-full w-auto object-contain"
       onError={(e) => {
-        // Respaldo si la imagen no carga
         e.target.style.display = "none";
         e.target.nextSibling.style.display = "block";
       }}
@@ -102,9 +101,8 @@ export default function App() {
   ]);
   const chatEndRef = useRef(null);
 
-  // EFECTO PARA BLOQUEAR EL SCROLL DEL NAVEGADOR (PWA Feeling)
+  // EFECTO PARA BLOQUEAR EL SCROLL DEL NAVEGADOR
   useEffect(() => {
-    // Bloqueamos el scroll en el body para que no se mueva el navegador por fuera
     document.body.style.overflow = "hidden";
     document.body.style.position = "fixed";
     document.body.style.width = "100%";
@@ -325,18 +323,17 @@ PROTOCOLO:
   };
 
   return (
-    <div className="fixed inset-0 w-screen h-screen bg-[#f3f4f6] flex items-center justify-center font-sans text-slate-900 overflow-hidden">
-      {/* Contenedor principal estilo móvil */}
-      <div className="w-full max-w-md h-full md:h-[92vh] md:rounded-[3rem] bg-white shadow-[0_20px_50px_rgba(0,0,0,0.1)] overflow-hidden flex flex-col relative md:border-[10px] border-[#1e293b]">
-        {/* Notch superior (solo visible en escritorio como adorno) */}
+    <div className="fixed inset-0 w-screen h-[100dvh] bg-[#f3f4f6] flex items-center justify-center font-sans text-slate-900 overflow-hidden">
+      {/* Contenedor principal estilo móvil - Ajustado para altura dinámica dvh */}
+      <div className="w-full max-w-md h-full md:h-[92vh] md:max-h-[850px] md:rounded-[3rem] bg-white shadow-[0_20px_50px_rgba(0,0,0,0.1)] overflow-hidden flex flex-col relative md:border-[10px] border-[#1e293b]">
+        {/* Notch superior decorativo para pantallas grandes */}
         <div className="hidden md:block h-6 w-1/3 bg-[#1e293b] absolute top-0 left-1/2 -translate-x-1/2 rounded-b-2xl z-30"></div>
 
-        {/* Cabecera FIJA */}
-        <div className="bg-white px-6 pt-10 pb-4 flex flex-col z-10 border-b border-slate-50 shrink-0">
-          <div className="flex justify-between items-center mb-4">
-            {/* Logo grande solicitado (h-[84px]) */}
-            <MicroSmartLogo className="h-[84px] w-auto flex items-center" />
-            <div className="flex space-x-2">
+        {/* Cabecera FIJA - Reducimos un poco el logo en pantallas muy pequeñas */}
+        <div className="bg-white px-6 pt-8 pb-3 flex flex-col z-10 border-b border-slate-50 shrink-0">
+          <div className="flex justify-between items-center mb-3">
+            <MicroSmartLogo className="h-16 xs:h-20 w-auto flex items-center" />
+            <div className="flex space-x-1">
               <button className="p-2 hover:bg-slate-100 rounded-full transition-colors relative">
                 <Bell size={20} className="text-slate-600" />
                 {messagesList.length > 0 && (
@@ -348,29 +345,29 @@ PROTOCOLO:
               </button>
             </div>
           </div>
-          <div className="flex items-center space-x-4 p-4 bg-slate-50 rounded-3xl border border-slate-100">
-            <div className="w-12 h-12 bg-[#00479b] rounded-2xl flex items-center justify-center shadow-lg shadow-blue-900/10">
-              <User size={24} className="text-white" />
+          <div className="flex items-center space-x-3 p-3 bg-slate-50 rounded-2xl border border-slate-100">
+            <div className="w-10 h-10 bg-[#00479b] rounded-xl flex items-center justify-center shadow-lg shadow-blue-900/10">
+              <User size={20} className="text-white" />
             </div>
-            <div>
-              <h1 className="text-lg font-bold text-slate-800 leading-tight">
+            <div className="overflow-hidden">
+              <h1 className="text-base font-bold text-slate-800 leading-tight truncate">
                 Hola, {authorizedNames[0]?.name?.split(" ")[0]}
               </h1>
-              <p className="text-xs text-slate-500 font-medium flex items-center">
-                <MapPin size={12} className="mr-1 text-[#7bc100]" />{" "}
+              <p className="text-[10px] text-slate-500 font-medium flex items-center">
+                <MapPin size={10} className="mr-1 text-[#7bc100]" />{" "}
                 microsmart.es
               </p>
             </div>
           </div>
         </div>
 
-        {/* Área de Contenido con SCROLL INTERNO */}
-        <div className="flex-1 overflow-y-auto pb-32 px-6 pt-2 scrollbar-hide">
+        {/* Área de Contenido con SCROLL INTERNO - pb-24 para dejar espacio al dock */}
+        <div className="flex-1 overflow-y-auto pb-24 px-6 pt-2 scrollbar-hide">
           {activeTab === "home" && (
-            <div className="flex flex-col items-center space-y-10 py-10 animate-in fade-in zoom-in duration-500">
+            <div className="flex flex-col items-center space-y-8 py-8 animate-in fade-in zoom-in duration-500">
               <div className="text-center">
                 <div
-                  className={`inline-flex items-center space-x-2 px-4 py-1.5 rounded-full text-xs font-bold transition-all ${
+                  className={`inline-flex items-center space-x-2 px-4 py-1.5 rounded-full text-[10px] font-bold transition-all ${
                     doorStatus === "idle"
                       ? "bg-green-50 text-green-600"
                       : "bg-blue-50 text-blue-600"
@@ -394,7 +391,7 @@ PROTOCOLO:
                 <button
                   onClick={handleOpenDoor}
                   disabled={doorStatus !== "idle"}
-                  className={`relative w-64 h-64 rounded-full flex flex-col items-center justify-center shadow-2xl transition-all duration-300 transform active:scale-95 ${
+                  className={`relative w-56 h-56 xs:w-64 xs:h-64 rounded-full flex flex-col items-center justify-center shadow-2xl transition-all duration-300 transform active:scale-95 ${
                     doorStatus === "idle"
                       ? "bg-gradient-to-tr from-[#6aa600] to-[#8be000] shadow-[#7bc100]/30 hover:shadow-[#7bc100]/50"
                       : "bg-[#00479b] shadow-blue-900/30"
@@ -404,23 +401,23 @@ PROTOCOLO:
                   {doorStatus === "idle" ? (
                     <>
                       <Power
-                        size={64}
+                        size={56}
                         className="text-white mb-2 drop-shadow-lg"
                       />
-                      <span className="text-white text-2xl font-black tracking-tighter">
+                      <span className="text-white text-xl font-black tracking-tighter">
                         ABRIR
                       </span>
-                      <span className="text-white/70 text-[10px] font-bold mt-1">
+                      <span className="text-white/70 text-[9px] font-bold mt-1">
                         PULSA PARA ACTIVAR
                       </span>
                     </>
                   ) : (
                     <>
                       <ShieldCheck
-                        size={64}
+                        size={56}
                         className="text-white mb-2 animate-bounce"
                       />
-                      <span className="text-white text-xl font-bold">
+                      <span className="text-white text-lg font-bold">
                         PROCESANDO
                       </span>
                     </>
@@ -429,19 +426,19 @@ PROTOCOLO:
               </div>
 
               <div className="grid grid-cols-2 gap-4 w-full">
-                <div className="bg-white p-5 rounded-[2.5rem] border border-slate-100 shadow-sm flex flex-col items-center">
-                  <span className="text-2xl font-black text-slate-800">
+                <div className="bg-white p-4 rounded-3xl border border-slate-100 shadow-sm flex flex-col items-center">
+                  <span className="text-xl font-black text-slate-800">
                     {historyLog.length}
                   </span>
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest text-center">
+                  <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest text-center">
                     Registros
                   </span>
                 </div>
-                <div className="bg-white p-5 rounded-[2.5rem] border border-slate-100 shadow-sm flex flex-col items-center">
-                  <span className="text-2xl font-black text-slate-800">
+                <div className="bg-white p-4 rounded-3xl border border-slate-100 shadow-sm flex flex-col items-center">
+                  <span className="text-xl font-black text-slate-800">
                     {messagesList.length}
                   </span>
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest text-center">
+                  <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest text-center">
                     Avisos
                   </span>
                 </div>
@@ -450,18 +447,18 @@ PROTOCOLO:
           )}
 
           {activeTab === "ai" && (
-            <div className="flex flex-col h-full animate-in slide-in-from-bottom-4 duration-500 bg-slate-50 -mx-6 rounded-t-[3rem] overflow-hidden border-t border-slate-200">
-              <div className="p-6 pb-2">
-                <h2 className="text-xl font-black text-slate-800 flex items-center">
-                  <Sparkles size={20} className="mr-2 text-[#00479b]" />{" "}
+            <div className="flex flex-col h-full animate-in slide-in-from-bottom-4 duration-500 bg-slate-50 -mx-6 rounded-t-[2.5rem] overflow-hidden border-t border-slate-200">
+              <div className="p-5 pb-2">
+                <h2 className="text-lg font-black text-slate-800 flex items-center">
+                  <Sparkles size={18} className="mr-2 text-[#00479b]" />{" "}
                   Conserje IA
                 </h2>
-                <p className="text-[10px] font-bold text-slate-400 mt-1 uppercase tracking-widest">
+                <p className="text-[9px] font-bold text-slate-400 mt-1 uppercase tracking-widest">
                   Simulador de telefonillo
                 </p>
               </div>
 
-              <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
+              <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
                 {chatHistory.map((msg, idx) => (
                   <div
                     key={idx}
@@ -470,7 +467,7 @@ PROTOCOLO:
                     }`}
                   >
                     <div
-                      className={`max-w-[85%] px-4 py-3 rounded-3xl text-sm leading-relaxed shadow-sm ${
+                      className={`max-w-[85%] px-4 py-3 rounded-2xl text-xs leading-relaxed shadow-sm ${
                         msg.role === "user"
                           ? "bg-[#00479b] text-white rounded-br-none"
                           : "bg-white text-slate-700 rounded-bl-none border border-slate-100"
@@ -482,14 +479,14 @@ PROTOCOLO:
                 ))}
                 {isTyping && (
                   <div className="flex justify-start">
-                    <div className="bg-white border border-slate-100 px-4 py-3 rounded-3xl rounded-bl-none shadow-sm flex space-x-1">
-                      <div className="w-1.5 h-1.5 bg-slate-300 rounded-full animate-bounce"></div>
+                    <div className="bg-white border border-slate-100 px-4 py-2 rounded-2xl rounded-bl-none shadow-sm flex space-x-1">
+                      <div className="w-1 h-1 bg-slate-300 rounded-full animate-bounce"></div>
                       <div
-                        className="w-1.5 h-1.5 bg-slate-300 rounded-full animate-bounce"
+                        className="w-1 h-1 bg-slate-300 rounded-full animate-bounce"
                         style={{ animationDelay: "0.2s" }}
                       ></div>
                       <div
-                        className="w-1.5 h-1.5 bg-slate-300 rounded-full animate-bounce"
+                        className="w-1 h-1 bg-slate-300 rounded-full animate-bounce"
                         style={{ animationDelay: "0.4s" }}
                       ></div>
                     </div>
@@ -498,7 +495,7 @@ PROTOCOLO:
                 <div ref={chatEndRef} />
               </div>
 
-              <div className="p-4 bg-white border-t border-slate-100">
+              <div className="p-3 bg-white border-t border-slate-100">
                 <div className="relative flex items-center">
                   <input
                     type="text"
@@ -507,15 +504,15 @@ PROTOCOLO:
                     onKeyPress={(e) =>
                       e.key === "Enter" && handleSimulateVisitor()
                     }
-                    placeholder="Escribe como si fueras la visita..."
-                    className="w-full bg-slate-50 text-sm text-slate-800 rounded-2xl pl-4 pr-12 py-4 focus:outline-none focus:ring-2 focus:ring-[#7bc100]/20 border border-slate-100"
+                    placeholder="Escribe como visita..."
+                    className="w-full bg-slate-50 text-xs text-slate-800 rounded-xl pl-4 pr-12 py-3 focus:outline-none focus:ring-2 focus:ring-[#7bc100]/20 border border-slate-100"
                   />
                   <button
                     onClick={handleSimulateVisitor}
                     disabled={isTyping || !chatInput.trim()}
-                    className="absolute right-2 p-2.5 bg-[#00479b] text-white rounded-xl hover:bg-blue-800 disabled:opacity-30 transition-all shadow-lg shadow-blue-900/20"
+                    className="absolute right-1.5 p-2 bg-[#00479b] text-white rounded-lg hover:bg-blue-800 disabled:opacity-30 transition-all shadow-lg shadow-blue-900/20"
                   >
-                    <Send size={18} />
+                    <Send size={16} />
                   </button>
                 </div>
               </div>
@@ -523,18 +520,18 @@ PROTOCOLO:
           )}
 
           {activeTab === "history" && (
-            <div className="animate-in fade-in slide-in-from-right-4 duration-500">
-              <h2 className="text-2xl font-black text-slate-800 mb-6 tracking-tight">
+            <div className="animate-in fade-in slide-in-from-right-4 duration-500 py-4">
+              <h2 className="text-xl font-black text-slate-800 mb-6 tracking-tight">
                 Actividad
               </h2>
-              <div className="space-y-4">
+              <div className="space-y-3">
                 {historyLog.map((log) => (
                   <div
                     key={log.id}
-                    className="bg-white p-5 rounded-[2rem] shadow-sm border border-slate-100 flex items-center space-x-4"
+                    className="bg-white p-4 rounded-3xl shadow-sm border border-slate-100 flex items-center space-x-3"
                   >
                     <div
-                      className={`p-3 rounded-2xl ${
+                      className={`p-2.5 rounded-xl ${
                         log.type === "ai_open"
                           ? "bg-green-100 text-[#7bc100]"
                           : log.type === "manual"
@@ -545,25 +542,25 @@ PROTOCOLO:
                       }`}
                     >
                       {log.type === "ai_open" ? (
-                        <Package size={20} />
+                        <Package size={18} />
                       ) : log.type === "manual" ? (
-                        <User size={20} />
+                        <User size={18} />
                       ) : log.type === "message" ? (
-                        <MessageSquare size={20} />
+                        <MessageSquare size={18} />
                       ) : (
-                        <ShieldAlert size={20} />
+                        <ShieldAlert size={18} />
                       )}
                     </div>
                     <div className="flex-1">
-                      <h4 className="font-bold text-slate-800 text-sm leading-none mb-1">
+                      <h4 className="font-bold text-slate-800 text-xs leading-none mb-1">
                         {log.title}
                       </h4>
-                      <p className="text-[11px] text-slate-500 font-medium">
+                      <p className="text-[10px] text-slate-500 font-medium truncate">
                         {log.desc}
                       </p>
                     </div>
-                    <div className="text-right">
-                      <span className="text-xs font-black text-slate-700 block">
+                    <div className="text-right shrink-0">
+                      <span className="text-[10px] font-black text-slate-700 block">
                         {log.time}
                       </span>
                     </div>
@@ -574,18 +571,18 @@ PROTOCOLO:
           )}
 
           {activeTab === "messages" && (
-            <div className="animate-in fade-in slide-in-from-right-4 duration-500">
-              <h2 className="text-2xl font-black text-slate-800 mb-6 tracking-tight">
+            <div className="animate-in fade-in slide-in-from-right-4 duration-500 py-4">
+              <h2 className="text-xl font-black text-slate-800 mb-6 tracking-tight">
                 Recados
               </h2>
               <div className="space-y-4">
                 {messagesList.length === 0 ? (
-                  <div className="text-center py-20 bg-slate-50 rounded-[3rem] border-2 border-dashed border-slate-200">
+                  <div className="text-center py-16 bg-slate-50 rounded-[2.5rem] border-2 border-dashed border-slate-200">
                     <MessageSquare
-                      size={48}
-                      className="text-slate-300 mx-auto mb-4"
+                      size={40}
+                      className="text-slate-300 mx-auto mb-3"
                     />
-                    <p className="text-slate-400 font-bold text-sm">
+                    <p className="text-slate-400 font-bold text-xs">
                       Sin mensajes pendientes
                     </p>
                   </div>
@@ -593,22 +590,22 @@ PROTOCOLO:
                   messagesList.map((msg) => (
                     <div
                       key={msg.id}
-                      className="bg-white p-6 rounded-[2.5rem] shadow-md border-l-4 border-l-[#7bc100]"
+                      className="bg-white p-5 rounded-3xl shadow-md border-l-4 border-l-[#7bc100]"
                     >
-                      <div className="flex justify-between items-start mb-3">
+                      <div className="flex justify-between items-start mb-2">
                         <div>
-                          <span className="text-[9px] font-black text-[#00479b] tracking-tighter uppercase">
+                          <span className="text-[8px] font-black text-[#00479b] tracking-tighter uppercase">
                             PARA
                           </span>
-                          <h4 className="font-black text-slate-800 text-base">
+                          <h4 className="font-black text-slate-800 text-sm">
                             {msg.recipient}
                           </h4>
                         </div>
-                        <span className="text-[10px] font-bold text-slate-400">
+                        <span className="text-[9px] font-bold text-slate-400">
                           {msg.time}
                         </span>
                       </div>
-                      <p className="text-sm text-slate-600 mb-4 font-medium italic">
+                      <p className="text-xs text-slate-600 mb-4 font-medium italic">
                         "{msg.content}"
                       </p>
                       <a
@@ -620,9 +617,9 @@ PROTOCOLO:
                         )}`}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="flex items-center justify-center w-full bg-[#25d366] hover:bg-[#128c7e] text-white py-3 rounded-2xl text-xs font-black transition-all shadow-lg shadow-green-500/20"
+                        className="flex items-center justify-center w-full bg-[#25d366] hover:bg-[#128c7e] text-white py-2.5 rounded-xl text-[10px] font-black transition-all shadow-lg shadow-green-500/20"
                       >
-                        <PhoneForwarded size={16} className="mr-2" /> REENVIAR
+                        <PhoneForwarded size={14} className="mr-2" /> REENVIAR
                         WHATSAPP
                       </a>
                     </div>
@@ -633,54 +630,54 @@ PROTOCOLO:
           )}
 
           {activeTab === "settings" && (
-            <div className="animate-in fade-in slide-in-from-right-4 duration-500 space-y-6">
-              <h2 className="text-2xl font-black text-slate-800 mb-6 tracking-tight">
+            <div className="animate-in fade-in slide-in-from-right-4 duration-500 space-y-5 py-4">
+              <h2 className="text-xl font-black text-slate-800 mb-6 tracking-tight">
                 Configuración
               </h2>
 
-              <div className="bg-white rounded-[2.5rem] p-6 shadow-sm border border-slate-100">
+              <div className="bg-white rounded-3xl p-5 shadow-sm border border-slate-100">
                 <div className="flex items-center space-x-3 mb-4">
-                  <UserPlus size={20} className="text-[#00479b]" />
-                  <h3 className="font-bold text-slate-800">
+                  <UserPlus size={18} className="text-[#00479b]" />
+                  <h3 className="font-bold text-slate-800 text-sm">
                     Personas Autorizadas
                   </h3>
                 </div>
 
-                <div className="space-y-3 mb-6">
+                <div className="space-y-2 mb-4">
                   {authorizedNames.map((person, index) => (
                     <div
                       key={index}
-                      className="flex justify-between items-center bg-slate-50 p-3 rounded-2xl border border-slate-100"
+                      className="flex justify-between items-center bg-slate-50 p-2.5 rounded-xl border border-slate-100"
                     >
-                      <div>
-                        <span className="text-sm font-bold text-slate-700 block">
+                      <div className="overflow-hidden">
+                        <span className="text-xs font-bold text-slate-700 block truncate">
                           {person.name}
                         </span>
-                        <span className="text-[10px] text-slate-400 font-bold">
+                        <span className="text-[9px] text-slate-400 font-bold">
                           {person.phone}
                         </span>
                       </div>
                       <button
                         onClick={() => handleRemoveName(person.name)}
-                        className="text-red-400 p-2 hover:bg-red-50 rounded-xl"
+                        className="text-red-400 p-2 hover:bg-red-50 rounded-lg"
                       >
-                        <X size={18} />
+                        <X size={16} />
                       </button>
                     </div>
                   ))}
                 </div>
 
-                <div className="space-y-3">
+                <div className="space-y-2">
                   <input
                     type="text"
                     value={newName}
                     onChange={(e) => setNewName(e.target.value)}
                     placeholder="Nombre completo"
-                    className="w-full bg-slate-50 border border-slate-200 text-sm rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-[#7bc100]/20"
+                    className="w-full bg-slate-50 border border-slate-200 text-xs rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#7bc100]/20"
                   />
                   <div className="flex space-x-2">
-                    <div className="flex-1 bg-slate-50 border border-slate-200 rounded-xl flex items-center px-4">
-                      <span className="text-slate-400 text-sm font-bold border-r border-slate-200 pr-3 mr-3">
+                    <div className="flex-1 bg-slate-50 border border-slate-200 rounded-lg flex items-center px-3">
+                      <span className="text-slate-400 text-xs font-bold border-r border-slate-200 pr-2 mr-2">
                         +34
                       </span>
                       <input
@@ -688,12 +685,12 @@ PROTOCOLO:
                         value={newPhone}
                         onChange={(e) => setNewPhone(e.target.value)}
                         placeholder="Teléfono"
-                        className="bg-transparent text-sm w-full py-3 focus:outline-none"
+                        className="bg-transparent text-xs w-full py-2.5 focus:outline-none"
                       />
                     </div>
                     <button
                       onClick={handleAddName}
-                      className="bg-[#00479b] text-white px-6 rounded-xl font-bold shadow-lg shadow-blue-900/20 active:scale-95 transition-all"
+                      className="bg-[#00479b] text-white px-4 rounded-lg text-xs font-bold shadow-lg shadow-blue-900/20 active:scale-95 transition-all"
                     >
                       OK
                     </button>
@@ -701,67 +698,67 @@ PROTOCOLO:
                 </div>
               </div>
 
-              <div className="bg-white rounded-[2.5rem] p-6 shadow-sm border border-slate-100 space-y-2">
-                <button className="w-full flex justify-between items-center p-3 hover:bg-slate-50 rounded-2xl transition-all">
+              <div className="bg-white rounded-3xl p-5 shadow-sm border border-slate-100 space-y-1">
+                <button className="w-full flex justify-between items-center p-2.5 hover:bg-slate-50 rounded-xl transition-all">
                   <div className="flex items-center space-x-3">
-                    <Wifi size={20} className="text-slate-400" />
-                    <span className="text-sm font-bold text-slate-700">
+                    <Wifi size={18} className="text-slate-400" />
+                    <span className="text-xs font-bold text-slate-700">
                       Configurar WiFi
                     </span>
                   </div>
-                  <ChevronRight size={18} className="text-slate-300" />
+                  <ChevronRight size={16} className="text-slate-300" />
                 </button>
-                <button className="w-full flex justify-between items-center p-3 hover:bg-red-50 rounded-2xl transition-all text-red-500">
+                <button className="w-full flex justify-between items-center p-2.5 hover:bg-red-50 rounded-xl transition-all text-red-500">
                   <div className="flex items-center space-x-3">
-                    <LogOut size={20} />
-                    <span className="text-sm font-bold">Desconectar App</span>
+                    <LogOut size={18} />
+                    <span className="text-xs font-bold">Desconectar App</span>
                   </div>
                 </button>
               </div>
 
-              <div className="text-center pt-4 pb-10">
-                <p className="text-[10px] font-black text-[#00479b] tracking-[0.2em]">
+              <div className="text-center pt-2 pb-6">
+                <p className="text-[9px] font-black text-[#00479b] tracking-[0.2em]">
                   MICROSMART.ES
                 </p>
-                <p className="text-[9px] text-slate-300 font-bold mt-1 uppercase">
-                  Control Inteligente v1.3
+                <p className="text-[8px] text-slate-300 font-bold mt-1 uppercase">
+                  Control Inteligente v1.4
                 </p>
               </div>
             </div>
           )}
         </div>
 
-        {/* Menú Inferior FIJO estilo Dock */}
-        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 w-[90%] bg-white/95 backdrop-blur-xl border border-white/50 px-4 py-3 flex justify-between items-center z-20 rounded-[2.5rem] shadow-2xl">
+        {/* Menú Inferior FIJO estilo Dock - Anclado a la parte inferior del contenedor seguro */}
+        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 w-[92%] bg-white/95 backdrop-blur-xl border border-white/50 px-2 py-2 flex justify-between items-center z-20 rounded-[2rem] shadow-2xl">
           <NavItem
             active={activeTab === "home"}
             onClick={() => setActiveTab("home")}
-            icon={<Home size={24} />}
+            icon={<Home size={22} />}
             label="Inicio"
           />
           <NavItem
             active={activeTab === "history"}
             onClick={() => setActiveTab("history")}
-            icon={<Clock size={24} />}
+            icon={<Clock size={22} />}
             label="Registro"
           />
           <NavItem
             active={activeTab === "messages"}
             onClick={() => setActiveTab("messages")}
-            icon={<MessageSquare size={24} />}
+            icon={<MessageSquare size={22} />}
             label="Recados"
             badge={messagesList.length}
           />
           <NavItem
             active={activeTab === "ai"}
             onClick={() => setActiveTab("ai")}
-            icon={<Bot size={24} />}
+            icon={<Bot size={22} />}
             label="IA"
           />
           <NavItem
             active={activeTab === "settings"}
             onClick={() => setActiveTab("settings")}
-            icon={<Settings size={24} />}
+            icon={<Settings size={22} />}
             label="Ajustes"
           />
         </div>
@@ -774,31 +771,31 @@ function NavItem({ active, onClick, icon, label, badge }) {
   return (
     <button
       onClick={onClick}
-      className={`relative flex flex-col items-center justify-center p-2 transition-all duration-300 ${
+      className={`relative flex-1 flex flex-col items-center justify-center p-1.5 transition-all duration-300 ${
         active ? "text-[#00479b]" : "text-slate-400 hover:text-slate-600"
       }`}
     >
       <div
         className={`transition-all duration-300 ${
-          active ? "scale-110 -translate-y-1" : "scale-100"
+          active ? "scale-110 -translate-y-0.5" : "scale-100"
         }`}
       >
         {icon}
         {badge > 0 && (
-          <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white text-[8px] font-black rounded-full flex items-center justify-center border-2 border-white">
+          <span className="absolute -top-1 -right-1.5 w-3.5 h-3.5 bg-red-500 text-white text-[7px] font-black rounded-full flex items-center justify-center border-2 border-white">
             {badge}
           </span>
         )}
       </div>
       <span
-        className={`text-[8px] font-black uppercase tracking-tighter mt-1 transition-all ${
+        className={`text-[7px] font-black uppercase tracking-tighter mt-1 transition-all ${
           active ? "opacity-100" : "opacity-0 h-0"
         }`}
       >
         {label}
       </span>
       {active && (
-        <div className="absolute -bottom-1 w-1 h-1 bg-[#00479b] rounded-full"></div>
+        <div className="absolute bottom-0 w-1 h-1 bg-[#00479b] rounded-full"></div>
       )}
     </button>
   );
