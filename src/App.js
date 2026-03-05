@@ -26,19 +26,25 @@ import {
   Volume2,
 } from "lucide-react";
 
-// Implementación de Backoff Exponencial para las llamadas a la API
+// Implementación de Backoff Exponencial mejorada
 const fetchWithRetry = async (url, options, retries = 5, delay = 1000) => {
   try {
     const res = await fetch(url, options);
     if (!res.ok) {
-      // Obtenemos más detalles del error si es posible
       const errorData = await res.json().catch(() => null);
       console.error("Error de API:", res.status, errorData);
+      // Si es un error 400 (Bad Request), no reintentamos porque es un error de formato, fallamos rápido.
+      if (res.status === 400) {
+        throw new Error(
+          errorData?.error?.message || "Error de formato en la petición."
+        );
+      }
       throw new Error(`HTTP error! status: ${res.status}`);
     }
     return await res.json();
   } catch (error) {
-    if (retries > 0) {
+    // Solo reintentamos si no es un error de formato
+    if (retries > 0 && !error.message.includes("Error de formato")) {
       console.warn(`Reintentando petición... Intentos restantes: ${retries}`);
       await new Promise((r) => setTimeout(r, delay));
       return fetchWithRetry(url, options, retries - 1, delay * 2);
@@ -114,19 +120,17 @@ export default function App() {
 
   const speakResponse = (text) => {
     if ("speechSynthesis" in window) {
-      // Cancelar cualquier lectura previa
       window.speechSynthesis.cancel();
 
       const cleanText = text.replace(/\[.*?\]/g, "").trim();
 
-      if (!cleanText) return; // No hablar si no hay texto
+      if (!cleanText) return;
 
       const utterance = new SpeechSynthesisUtterance(cleanText);
       utterance.lang = "es-ES";
       utterance.rate = 1.0;
 
       utterance.onend = () => {
-        // SI estamos en modo fluido, volvemos a escuchar automáticamente al terminar de hablar
         if (isFluidMode) {
           setTimeout(() => {
             startVoiceRecognition();
@@ -166,20 +170,17 @@ export default function App() {
       recognitionRef.current.onresult = (event) => {
         const transcript = event.results[0][0].transcript;
         if (transcript.trim()) {
-          // Detenemos explícitamente para asegurar que no haya solapamientos
           recognitionRef.current.stop();
           handleSimulateVisitor(transcript);
         }
       };
 
       recognitionRef.current.onerror = (event) => {
-        console.error("Error de reconocimiento de voz:", event.error);
         setIsListening(false);
-        // Si hay error (como silencio - 'no-speech'), reintentamos si sigue el modo fluido
         if (isFluidMode && event.error === "no-speech") {
           setTimeout(startVoiceRecognition, 1000);
         } else if (isFluidMode && event.error !== "aborted") {
-          setIsFluidMode(false); // Apagar si es un error diferente
+          setIsFluidMode(false);
         }
       };
     }
@@ -193,13 +194,11 @@ export default function App() {
 
   const toggleFluidMode = () => {
     if (isFluidMode) {
-      // Apagar modo fluido
       setIsFluidMode(false);
       setIsListening(false);
       if (recognitionRef.current) recognitionRef.current.stop();
       window.speechSynthesis.cancel();
     } else {
-      // Encender modo fluido
       setIsFluidMode(true);
       startVoiceRecognition();
     }
@@ -296,23 +295,7 @@ export default function App() {
     setChatInput("");
     setIsTyping(true);
 
-    // API Key configurada
     const apiKey = "AIzaSyDVE6h1s-PPAWXvYg-t_f9kf6y0YfskQRs";
-
-    if (!apiKey) {
-      console.error("API Key no configurada.");
-      setChatHistory((prev) => [
-        ...prev,
-        {
-          role: "ai",
-          content: "Error: Falta configurar la clave API del asistente.",
-        },
-      ]);
-      setIsTyping(false);
-      if (isFluidMode) setIsFluidMode(false);
-      return;
-    }
-
     const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
     const allowedNamesList =
       authorizedNames.length > 0
@@ -333,17 +316,18 @@ PROTOCOLO:
 - VISITA: Si valida nombre completo y no estás, ofrece recado. Usa exactamente la etiqueta: [MENSAJE_PARA | NombreAutorizado | texto]
 - RECHAZO: Si no coincide nombre, rechaza educadamente. Usa exactamente la etiqueta: [ACCESO_DENEGADO | Motivo]`;
 
-    // Filtramos el historial para asegurarnos de que el formato sea el correcto para Gemini
-    const contents = [
-      ...chatHistory.filter((m) => m.role !== "system"),
-      newUserMsg,
-    ].map((msg) => ({
+    // SOLUCIÓN: La API de Gemini exige que el historial empiece con 'user'.
+    // Filtramos el mensaje de saludo inicial del conserje para que la petición sea válida y no devuelva error 400.
+    const historyForAPI = chatHistory.filter(
+      (msg, index) => !(index === 0 && msg.role === "ai")
+    );
+
+    const contents = [...historyForAPI, newUserMsg].map((msg) => ({
       role: msg.role === "user" ? "user" : "model",
       parts: [{ text: msg.content }],
     }));
 
     try {
-      console.log("Enviando petición a Gemini...");
       const data = await fetchWithRetry(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -353,12 +337,12 @@ PROTOCOLO:
         }),
       });
 
-      console.log("Respuesta recibida:", data);
-      let aiText =
-        data.candidates?.[0]?.content?.parts?.[0]?.text ||
-        "No entiendo, ¿puede repetir?";
-      let actionType = null;
+      let aiText = data.candidates?.[0]?.content?.parts?.[0]?.text;
 
+      // Manejo de error si Google no devuelve texto válido
+      if (!aiText) throw new Error("No se recibió respuesta de la IA.");
+
+      let actionType = null;
       if (aiText.includes("[ABRIR_PUERTA")) actionType = "opened";
       else if (aiText.includes("[MENSAJE_PARA")) actionType = "message_saved";
       else if (aiText.includes("[ACCESO_DENEGADO")) actionType = "denied";
@@ -369,19 +353,15 @@ PROTOCOLO:
         { role: "ai", content: finalAiText, action: actionType },
       ]);
 
-      // HABLAR RESPUESTA
       speakResponse(finalAiText);
     } catch (error) {
       console.error("Fetch error capturado:", error);
+      // Mostramos el error directo para que el fallo sea inmediato
       setChatHistory((prev) => [
         ...prev,
-        {
-          role: "ai",
-          content:
-            "Lo siento, ha ocurrido un error de conexión con el servidor.",
-        },
+        { role: "ai", content: "Error en la conexión. Intenta nuevamente." },
       ]);
-      if (isFluidMode) setIsFluidMode(false); // Desactivar modo fluido si hay error severo
+      if (isFluidMode) setIsFluidMode(false);
     } finally {
       setIsTyping(false);
     }
@@ -654,7 +634,163 @@ PROTOCOLO:
             </div>
           )}
 
-          {/* ... Pestañas de Mensajes y Ajustes se mantienen igual ... */}
+          {/* Pestañas de Mensajes y Ajustes */}
+          {activeTab === "messages" && (
+            <div className="animate-in fade-in slide-in-from-right-4 duration-500 py-4">
+              <h2 className="text-xl font-black text-slate-800 mb-6 tracking-tight">
+                Recados
+              </h2>
+              <div className="space-y-4">
+                {messagesList.length === 0 ? (
+                  <div className="text-center py-16 bg-slate-50 rounded-[2.5rem] border-2 border-dashed border-slate-200">
+                    <MessageSquare
+                      size={40}
+                      className="text-slate-300 mx-auto mb-3"
+                    />
+                    <p className="text-slate-400 font-bold text-xs">
+                      Sin mensajes pendientes
+                    </p>
+                  </div>
+                ) : (
+                  messagesList.map((msg) => (
+                    <div
+                      key={msg.id}
+                      className="bg-white p-5 rounded-3xl shadow-md border-l-4 border-l-[#7bc100]"
+                    >
+                      <div className="flex justify-between items-start mb-2">
+                        <div>
+                          <span className="text-[8px] font-black text-[#00479b] tracking-tighter uppercase">
+                            PARA
+                          </span>
+                          <h4 className="font-black text-slate-800 text-sm">
+                            {msg.recipient}
+                          </h4>
+                        </div>
+                        <span className="text-[9px] font-bold text-slate-400">
+                          {msg.time}
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-600 mb-4 font-medium italic">
+                        "{msg.content}"
+                      </p>
+                      <a
+                        href={`https://wa.me/${msg.phone.replace(
+                          /\D/g,
+                          ""
+                        )}?text=${encodeURIComponent(
+                          `Hola ${msg.recipient}, el Conserje MicroSmart tomó este recado para ti:\n\n"${msg.content}"`
+                        )}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center justify-center w-full bg-[#25d366] hover:bg-[#128c7e] text-white py-2.5 rounded-xl text-[10px] font-black transition-all shadow-lg shadow-green-500/20"
+                      >
+                        <PhoneForwarded size={14} className="mr-2" /> REENVIAR
+                        WHATSAPP
+                      </a>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          )}
+
+          {activeTab === "settings" && (
+            <div className="animate-in fade-in slide-in-from-right-4 duration-500 space-y-5 py-4">
+              <h2 className="text-xl font-black text-slate-800 mb-6 tracking-tight">
+                Configuración
+              </h2>
+
+              <div className="bg-white rounded-3xl p-5 shadow-sm border border-slate-100">
+                <div className="flex items-center space-x-3 mb-4">
+                  <UserPlus size={18} className="text-[#00479b]" />
+                  <h3 className="font-bold text-slate-800 text-sm">
+                    Personas Autorizadas
+                  </h3>
+                </div>
+
+                <div className="space-y-2 mb-4">
+                  {authorizedNames.map((person, index) => (
+                    <div
+                      key={index}
+                      className="flex justify-between items-center bg-slate-50 p-2.5 rounded-xl border border-slate-100"
+                    >
+                      <div className="overflow-hidden">
+                        <span className="text-xs font-bold text-slate-700 block truncate">
+                          {person.name}
+                        </span>
+                        <span className="text-[9px] text-slate-400 font-bold">
+                          {person.phone}
+                        </span>
+                      </div>
+                      <button
+                        onClick={() => handleRemoveName(person.name)}
+                        className="text-red-400 p-2 hover:bg-red-50 rounded-lg"
+                      >
+                        <X size={16} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="space-y-2">
+                  <input
+                    type="text"
+                    value={newName}
+                    onChange={(e) => setNewName(e.target.value)}
+                    placeholder="Nombre completo"
+                    className="w-full bg-slate-50 border border-slate-200 text-base text-slate-800 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#7bc100]/20"
+                  />
+                  <div className="flex space-x-2">
+                    <div className="flex-1 bg-slate-50 border border-slate-200 rounded-lg flex items-center px-3">
+                      <span className="text-slate-400 text-sm font-bold border-r border-slate-200 pr-2 mr-2">
+                        +34
+                      </span>
+                      <input
+                        type="tel"
+                        value={newPhone}
+                        onChange={(e) => setNewPhone(e.target.value)}
+                        placeholder="Teléfono"
+                        className="bg-transparent text-base text-slate-800 w-full py-2.5 focus:outline-none"
+                      />
+                    </div>
+                    <button
+                      onClick={handleAddName}
+                      className="bg-[#00479b] text-white px-4 rounded-lg text-xs font-bold shadow-lg shadow-blue-900/20 active:scale-95 transition-all"
+                    >
+                      OK
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-white rounded-3xl p-5 shadow-sm border border-slate-100 space-y-1">
+                <button className="w-full flex justify-between items-center p-2.5 hover:bg-slate-50 rounded-xl transition-all">
+                  <div className="flex items-center space-x-3">
+                    <Wifi size={18} className="text-slate-400" />
+                    <span className="text-xs font-bold text-slate-700">
+                      Configurar WiFi
+                    </span>
+                  </div>
+                  <ChevronRight size={16} className="text-slate-300" />
+                </button>
+                <button className="w-full flex justify-between items-center p-2.5 hover:bg-red-50 rounded-xl transition-all text-red-500">
+                  <div className="flex items-center space-x-3">
+                    <LogOut size={18} />
+                    <span className="text-xs font-bold">Desconectar App</span>
+                  </div>
+                </button>
+              </div>
+
+              <div className="text-center pt-2 pb-6">
+                <p className="text-[9px] font-black text-[#00479b] tracking-[0.2em]">
+                  MICROSMART.ES
+                </p>
+                <p className="text-[8px] text-slate-300 font-bold mt-1 uppercase">
+                  Control Inteligente v1.5
+                </p>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Menú Dock */}
