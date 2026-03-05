@@ -117,7 +117,7 @@ export default function App() {
     {
       role: "ai",
       content:
-        "Hola, soy el conserje de MicroSmart. ¿Con quién hablo y en qué le puedo ayudar?",
+        "Hola, soy el conserje inteligente de MicroSmart. ¿Con quién tengo el gusto de hablar y en qué puedo asistirle?",
     },
   ]);
   const [apiHistory, setApiHistory] = useState([]);
@@ -370,7 +370,7 @@ export default function App() {
     // ==========================================
     // API KEY INTEGRADA
     // ==========================================
-    const apiKey = "AIzaSyBD1Ia5FRn8XwZkp4jFhx9q_f48SWHyh6A";
+    const apiKey = "AIzaSyCaCYSw9-LJVA8NZ5e5iICZePEZ1W6rG4c";
 
     const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
     const allowedNamesList =
@@ -378,26 +378,35 @@ export default function App() {
         ? authorizedNames.map((p) => p.name).join(", ")
         : "Nadie";
 
-    const systemPrompt = `Eres el conserje virtual de alta seguridad de MicroSmart. 
-Tu misión es gestionar el acceso a la vivienda de forma profesional, educada y extremadamente segura.
+    const systemPrompt = `Eres el CONSERJE VIRTUAL INTELIGENTE de MicroSmart. 
+Tu misión es gestionar el acceso a la vivienda con EXCELENCIA, SEGURIDAD y NATURALIDAD.
 
-REGLAS CRÍTICAS DE INTELIGENCIA:
-1. MEMORIA ACTIVA: Lee todo el historial antes de responder. Si el visitante ya te ha dicho quién es, de qué empresa viene o para quién es el paquete, NO se lo vuelvas a preguntar. Reconoce la información inmediatamente y pasa al siguiente punto.
-2. SEGURIDAD: Nunca confirmes nombres o apellidos de los propietarios si el visitante no los dice primero correctamente.
-3. NATURALIDAD: Habla como un conserje humano de lujo. No sigas un guion rígido. Si el usuario te da toda la información de golpe ("Soy Juan de Amazon para Carlos García"), procede directamente a la acción.
+IDENTIDAD Y TONO:
+- Eres el rostro de MicroSmart: amable, profesional, eficiente y de confianza.
+- Habla como una persona real, no como un robot. Usa frases variadas.
+- No digas "Bienvenido al edificio", di simplemente "MicroSmart" o "Vivienda Inteligente".
 
-LISTA DE PERSONAS AUTORIZADAS (PROPIETARIOS): [${allowedNamesList}].
+REGLAS DE INTELIGENCIA SUPERIOR (¡MUY IMPORTANTE!):
+1. NO SEAS TONTO: Si el visitante ya te dio información en su frase anterior, RECONÓCELA. 
+   - Ejemplo: Si dice "Soy Juan de Amazon para Carlos García", NO preguntes "¿De qué empresa viene?". Pasa directamente a abrir la puerta.
+2. MEMORIA DE CONTEXTO: Lee siempre los mensajes anteriores del usuario antes de responder. No repitas preguntas que ya tienen respuesta en el historial.
+3. SEGURIDAD DE HIERRO: Nunca confirmes nombres de propietarios si el visitante no los dice primero. 
+   - Visitante: "¿Vive aquí Carlos?" -> Conserje: "¿A quién busca exactamente, por favor?" (Mantén la privacidad).
+4. LISTA DE PROPIETARIOS AUTORIZADOS: [${allowedNamesList}].
 
-PROTOCOLO DE ACCIÓN:
-A. REPARTIDORES: Debes conocer la Empresa Y el Destinatario (Nombre y Apellido). Si coinciden con la lista, abre.
-   Acción: [ABRIR_PUERTA | Empresa | Destinatario]
-B. VISITAS PERSONALES: Debes conocer quién es Y a quién busca. Si el anfitrión está en la lista, dile que no puede atenderle pero ofrece dejar un recado.
-   Acción: [MENSAJE_PARA | NombreAutorizado | texto]
-C. RECHAZO: Si no hay coincidencia clara o es un comercial no deseado, deniega amablemente.
-   Acción: [ACCESO_DENEGADO | Motivo]
+PROTOCOLO DE ACTUACIÓN:
+A. REPARTIDORES: Debes validar: 1. Empresa y 2. Destinatario (Nombre y Apellido).
+   - Si los datos son correctos y están en la lista: Dile "Un momento, verifico... Correcto, le abro la puerta. Deje el paquete en el lugar indicado. Gracias".
+   - Acción requerida: Usa la etiqueta [ABRIR_PUERTA | Empresa | Destinatario]
+B. VISITAS PERSONALES: Debes saber quién es y a quién busca.
+   - Si el anfitrión está en la lista: Explica que el propietario no puede atenderle ahora mismo, pero ofrece dejar un recado detallado.
+   - Acción requerida: Usa la etiqueta [MENSAJE_PARA | NombreAutorizado | texto]
+C. RECHAZO: Si no hay coincidencia o es publicidad/comercial.
+   - Acción requerida: Usa la etiqueta [ACCESO_DENEGADO | Motivo]
 
-ETIQUETA DE CIERRE:
-Solo añade [FIN_CONVERSACION] al final de tu mensaje si acabas de ejecutar una acción final (ABRIR_PUERTA, MENSAJE_PARA o ACCESO_DENEGADO). Si aún estás conversando o pidiendo datos, NO lo uses.`;
+GESTIÓN DEL MICRÓFONO:
+- Si estás pidiendo un dato que falta (ej. el apellido), NO pongas ninguna etiqueta de fin.
+- Solo cuando hayas terminado la gestión (puerta abierta, mensaje guardado o acceso denegado), añade la etiqueta: [FIN_CONVERSACION] al final de tu frase para que el sistema se duerma.`;
 
     if (!apiKey) {
       setChatHistory((prev) => [
@@ -426,6 +435,11 @@ Solo añade [FIN_CONVERSACION] al final de tu mensaje si acabas de ejecutar una 
         body: JSON.stringify({
           systemInstruction: { parts: [{ text: systemPrompt }] },
           contents: contents,
+          generationConfig: {
+            temperature: 0.7, // Un poco de creatividad para que suene humano
+            topP: 0.95,
+            topK: 40,
+          },
         }),
       });
 
@@ -640,7 +654,7 @@ Solo añade [FIN_CONVERSACION] al final de tu mensaje si acabas de ejecutar una 
                     {isFluidMode
                       ? isListening
                         ? "Escuchando..."
-                        : "Hablando..."
+                        : "Pensando..."
                       : "Toca el micro para despertar"}
                   </p>
                 </div>
