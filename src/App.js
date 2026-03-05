@@ -26,25 +26,27 @@ import {
   Volume2,
 } from "lucide-react";
 
-// Implementación de Backoff Exponencial mejorada
-const fetchWithRetry = async (url, options, retries = 3, delay = 1000) => {
+// Implementación de Backoff Exponencial mejorada - MODO DEBUG
+const fetchWithRetry = async (url, options, retries = 0, delay = 1000) => {
+  // NOTA: He puesto retries = 0 para que falle inmediatamente y veamos el error real sin esperar
   try {
     const res = await fetch(url, options);
     if (!res.ok) {
+      // Intentamos leer el mensaje de error que nos manda Google
       const errorData = await res.json().catch(() => null);
-      console.error("Error de API:", res.status, JSON.stringify(errorData));
-      // Fallar rápido en errores de formato
-      if (res.status === 400) {
+      console.error("Error de API:", res.status, errorData);
+      // Lanzamos el error con el mensaje literal de Google
+      if (errorData && errorData.error && errorData.error.message) {
         throw new Error(
-          errorData?.error?.message ||
-            "Error 400: Formato de petición inválido."
+          `Error de Google (${res.status}): ${errorData.error.message}`
         );
+      } else {
+        throw new Error(`Error HTTP: ${res.status} - No hay más detalles`);
       }
-      throw new Error(`HTTP error! status: ${res.status}`);
     }
     return await res.json();
   } catch (error) {
-    if (retries > 0 && !error.message.includes("Error 400")) {
+    if (retries > 0) {
       console.warn(`Reintentando petición... Intentos restantes: ${retries}`);
       await new Promise((r) => setTimeout(r, delay));
       return fetchWithRetry(url, options, retries - 1, delay * 2);
@@ -320,16 +322,12 @@ PROTOCOLO:
 
     // Preparamos los contenidos estrictamente para la API
     const newApiMsg = { role: "user", parts: [{ text: textToSend }] };
-    // Aseguramos que el historial enviado a la API siempre termine con un rol 'model' antes de enviar este nuevo 'user'
-    // Para simplificar y evitar errores de alternancia, enviaremos los últimos pares válidos.
 
-    // Validar el historial de API: si el último mensaje fue 'user' (y falló la respuesta), lo reemplazamos o lo descartamos.
     let validApiHistory = [...apiHistory];
     if (
       validApiHistory.length > 0 &&
       validApiHistory[validApiHistory.length - 1].role === "user"
     ) {
-      // Falló el intento anterior, reemplazamos el último mensaje del usuario
       validApiHistory.pop();
     }
 
@@ -368,22 +366,17 @@ PROTOCOLO:
 
       speakResponse(finalAiText);
     } catch (error) {
-      console.error("Fetch error:", error);
-      // Mensaje de error amigable en pantalla
+      console.error("Fetch error capturado:", error);
+      // IMPRIMIR EL ERROR EXACTO EN PANTALLA PARA DIAGNÓSTICO
       setChatHistory((prev) => [
         ...prev,
         {
           role: "ai",
-          content:
-            "Lo siento, ha habido un problema de red. Por favor, repita.",
+          content: `🕵️ MODO DIAGNÓSTICO. Error real detectado: ${error.message}. Por favor envía captura de pantalla de este mensaje.`,
         },
       ]);
-      // No añadimos esto al historial de la API para no corromper la secuencia
 
-      if (isFluidMode) {
-        // Dar un pequeño respiro antes de reintentar escuchar si falló
-        setTimeout(startVoiceRecognition, 2000);
-      }
+      if (isFluidMode) setIsFluidMode(false);
     } finally {
       setIsTyping(false);
     }
