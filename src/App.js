@@ -36,7 +36,7 @@ const fetchWithRetry = async (url, options, retries = 2, delay = 1000) => {
       if (res.status === 400 || res.status === 403 || res.status === 429) {
         throw new Error(
           `Error de Google (${res.status}): ${
-            errorData?.error?.message || "Revisar clave API"
+            errorData?.error?.message || "Revisar clave API o cuota"
           }`
         );
       }
@@ -123,7 +123,7 @@ export default function App() {
   const [apiHistory, setApiHistory] = useState([]);
   const chatEndRef = useRef(null);
 
-  // Precargar las voces del sistema al iniciar
+  // Precargar las voces del sistema
   useEffect(() => {
     if ("speechSynthesis" in window) {
       window.speechSynthesis.getVoices();
@@ -133,10 +133,10 @@ export default function App() {
     }
   }, []);
 
-  // --- LÓGICA DE VOZ Y SÍNTESIS MEJORADA PARA MÓVILES ---
+  // --- LÓGICA DE VOZ Y SÍNTESIS ---
   const speakResponse = (text) => {
     if ("speechSynthesis" in window) {
-      window.speechSynthesis.cancel(); // Parar cualquier audio previo
+      window.speechSynthesis.cancel();
 
       const cleanText = text.replace(/\[.*?\]/g, "").trim();
 
@@ -149,9 +149,7 @@ export default function App() {
       const utterance = new SpeechSynthesisUtterance(cleanText);
       utterance.lang = "es-ES";
 
-      // Búsqueda exhaustiva de voces naturales para iOS y Android
       const voices = window.speechSynthesis.getVoices();
-
       const preferredNames = [
         "google",
         "premium",
@@ -214,11 +212,7 @@ export default function App() {
   const startListening = () => {
     const SpeechRecognition =
       window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SpeechRecognition) {
-      alert("El reconocimiento de voz no está soportado en este navegador.");
-      stopFluidMode();
-      return;
-    }
+    if (!SpeechRecognition) return;
 
     if (!recognitionRef.current) {
       recognitionRef.current = new SpeechRecognition();
@@ -258,14 +252,8 @@ export default function App() {
         }
       };
 
-      recognitionRef.current.onerror = (event) => {
+      recognitionRef.current.onerror = () => {
         setIsListening(false);
-        if (
-          event.error === "not-allowed" ||
-          event.error === "service-not-allowed"
-        ) {
-          stopFluidMode();
-        }
       };
     }
 
@@ -280,37 +268,32 @@ export default function App() {
     }
   };
 
-  const stopFluidMode = () => {
-    isFluidModeRef.current = false;
-    setIsFluidMode(false);
-    setIsListening(false);
-    isProcessingRef.current = false;
-    isSpeakingRef.current = false;
-    if (recognitionRef.current) recognitionRef.current.stop();
-    window.speechSynthesis.cancel();
-  };
-
   const toggleFluidMode = () => {
     if (isFluidModeRef.current) {
-      stopFluidMode();
+      isFluidModeRef.current = false;
+      setIsFluidMode(false);
+      setIsListening(false);
+      isProcessingRef.current = false;
+      isSpeakingRef.current = false;
+      if (recognitionRef.current) recognitionRef.current.stop();
+      window.speechSynthesis.cancel();
     } else {
       if ("speechSynthesis" in window) {
         const unlockUtterance = new SpeechSynthesisUtterance("");
         window.speechSynthesis.speak(unlockUtterance);
       }
-
       isFluidModeRef.current = true;
       setIsFluidMode(true);
       startListening();
     }
   };
 
+  // Bloqueo de UI
   useEffect(() => {
     document.body.style.overflow = "hidden";
     document.body.style.position = "fixed";
     document.body.style.width = "100%";
     document.body.style.height = "100%";
-
     let meta = document.querySelector('meta[name="viewport"]');
     if (!meta) {
       meta = document.createElement("meta");
@@ -319,16 +302,9 @@ export default function App() {
     }
     meta.content =
       "width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no";
-
     const style = document.createElement("style");
-    style.innerHTML = `
-      * { touch-action: pan-y; -webkit-tap-highlight-color: transparent; }
-      input, textarea, select { font-size: 16px !important; }
-      .scrollbar-hide::-webkit-scrollbar { display: none; }
-      .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
-    `;
+    style.innerHTML = `* { touch-action: pan-y; -webkit-tap-highlight-color: transparent; } input, textarea, select { font-size: 16px !important; } .scrollbar-hide::-webkit-scrollbar { display: none; } .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }`;
     document.head.appendChild(style);
-
     return () => {
       document.body.style.overflow = "auto";
       document.body.style.position = "static";
@@ -341,13 +317,7 @@ export default function App() {
   }, [chatHistory, isTyping]);
 
   const handleAddName = () => {
-    if (
-      newName.trim() &&
-      newPhone.trim() &&
-      !authorizedNames
-        .map((n) => n.name.toLowerCase())
-        .includes(newName.trim().toLowerCase())
-    ) {
+    if (newName.trim() && newPhone.trim()) {
       const formattedPhone = newPhone.startsWith("+")
         ? newPhone.trim()
         : `+34 ${newPhone.trim()}`;
@@ -397,39 +367,23 @@ export default function App() {
     setChatInput("");
     setIsTyping(true);
 
-    const apiKey = "AIzaSyD06jLabAFFFMxiZq0RAKQ7p5sWtwd8Mgw";
+    const apiKey = "AIzaSyAHhKeJMyA-fSpmVXh_yhf5xAVoKwW22tM";
     const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
     const allowedNamesList =
       authorizedNames.length > 0
         ? authorizedNames.map((p) => p.name).join(", ")
         : "Nadie";
 
-    // EL NUEVO CEREBRO: Riguroso, natural y estructurado.
     const systemPrompt = `Eres el conserje virtual de alta seguridad de MicroSmart.
-Tu PERSONALIDAD: Amable, natural, profesional y muy riguroso con la seguridad. Actúa como un humano, haciendo preguntas paso a paso.
-
-MISIONES Y REGLAS DE SEGURIDAD CRÍTICAS:
-1. NUNCA asumas o confirmes apellidos que el visitante no haya dicho primero.
-2. NUNCA digas que la casa está vacía. Si el nombre no coincide, indica que se han equivocado.
-3. Ve paso a paso. No pidas toda la información de golpe, mantén una conversación fluida.
-
-PASOS DE VERIFICACIÓN (Síguelos estrictamente):
-Paso 1: Si no se han presentado, pregunta con quién hablas y el motivo de la visita.
-Paso 2: Si es un REPARTIDOR, debes asegurarte de preguntarle de qué empresa viene y para quién es el paquete exactamente (Nombre y Apellido).
-Paso 3: Si es una VISITA, pregúntale a quién busca exactamente (Nombre y Apellido).
-Paso 4: Compara el destinatario con la lista de PERSONAS AUTORIZADAS: [${allowedNamesList}].
-
-ACCIONES FINALES (Usa estas etiquetas SOLO cuando hayas verificado toda la información rigurosamente):
-- Si es REPARTIDOR y el destinatario coincide en la lista: Dile que le abres y usa la etiqueta [ABRIR_PUERTA | Empresa | Destinatario]
-- Si es VISITA y el destinatario coincide en la lista: Dile que le vas a dejar un recado y usa la etiqueta [MENSAJE_PARA | NombreAutorizado | texto]
-- Si NO coincide el nombre o es comercial: Rechaza amablemente y usa la etiqueta [ACCESO_DENEGADO | Motivo]
-
-¡MUY IMPORTANTE SOBRE EL MICRÓFONO!:
-SOLO añade la etiqueta [FIN_CONVERSACION] al final de tu mensaje SI acabas de usar una de las Acciones Finales (ABRIR_PUERTA, MENSAJE_PARA, ACCESO_DENEGADO) o si el usuario se despide explícitamente. 
-MIENTRAS ESTÉS HACIENDO PREGUNTAS (ej. preguntando la empresa o el apellido), NUNCA uses [FIN_CONVERSACION], para que la conversación siga abierta y fluida.`;
+Tu PERSONALIDAD: Amable, natural, profesional y muy riguroso.
+REGLAS:
+1. NUNCA asumas apellidos que el visitante no haya dicho.
+2. PASOS: Pregunta quién es y motivo -> Si es repartidor: Empresa y destinatario exacto -> Si es visita: A quién busca exacto.
+3. Lista de autorizados: [${allowedNamesList}].
+4. ACCIONES: [ABRIR_PUERTA | Empresa | Destinatario] o [MENSAJE_PARA | NombreAutorizado | texto] o [ACCESO_DENEGADO | Motivo].
+5. FINALIZACIÓN: Añade exactamente [FIN_CONVERSACION] al final de tu mensaje SOLO si ya abriste, tomaste recado o rechazaste. MIENTRAS preguntes datos, NO lo uses.`;
 
     const newApiMsg = { role: "user", parts: [{ text: textToSend }] };
-
     let validApiHistory = [...apiHistory];
     if (
       validApiHistory.length > 0 &&
@@ -437,7 +391,6 @@ MIENTRAS ESTÉS HACIENDO PREGUNTAS (ej. preguntando la empresa o el apellido), N
     ) {
       validApiHistory.pop();
     }
-
     const contents = [...validApiHistory, newApiMsg];
 
     try {
@@ -451,7 +404,6 @@ MIENTRAS ESTÉS HACIENDO PREGUNTAS (ej. preguntando la empresa o el apellido), N
       });
 
       let aiText = data.candidates?.[0]?.content?.parts?.[0]?.text;
-
       if (!aiText) throw new Error("Respuesta vacía de la IA.");
 
       setApiHistory([
@@ -466,9 +418,7 @@ MIENTRAS ESTÉS HACIENDO PREGUNTAS (ej. preguntando la empresa o el apellido), N
       else if (aiText.includes("[MENSAJE_PARA")) actionType = "message_saved";
       else if (aiText.includes("[ACCESO_DENEGADO")) actionType = "denied";
 
-      if (aiText.includes("[FIN_CONVERSACION]")) {
-        endConversation = true;
-      }
+      if (aiText.includes("[FIN_CONVERSACION]")) endConversation = true;
 
       const finalAiText = aiText.replace(/\[.*?\]/g, "").trim();
       setChatHistory((prev) => [
@@ -477,27 +427,18 @@ MIENTRAS ESTÉS HACIENDO PREGUNTAS (ej. preguntando la empresa o el apellido), N
       ]);
 
       isProcessingRef.current = false;
-
       if (endConversation) {
         isFluidModeRef.current = false;
         setIsFluidMode(false);
       }
-
       speakResponse(finalAiText);
     } catch (error) {
-      console.error("Fetch error capturado:", error);
       setChatHistory((prev) => [
         ...prev,
-        {
-          role: "ai",
-          content: `⚠️ Error de red. Repita.`,
-        },
+        { role: "ai", content: `⚠️ Error: ${error.message}` },
       ]);
-
       isProcessingRef.current = false;
-      if (isFluidModeRef.current) {
-        setTimeout(startListening, 1500);
-      }
+      if (isFluidModeRef.current) setTimeout(startListening, 1500);
     } finally {
       setIsTyping(false);
     }
@@ -560,7 +501,6 @@ MIENTRAS ESTÉS HACIENDO PREGUNTAS (ej. preguntando la empresa o el apellido), N
                 ></div>
                 <span>SISTEMA ONLINE</span>
               </div>
-
               <button
                 onClick={handleOpenDoor}
                 disabled={doorStatus !== "idle"}
@@ -587,25 +527,6 @@ MIENTRAS ESTÉS HACIENDO PREGUNTAS (ej. preguntando la empresa o el apellido), N
                   </>
                 )}
               </button>
-
-              <div className="grid grid-cols-2 gap-4 w-full">
-                <div className="bg-white p-4 rounded-3xl border border-slate-100 shadow-sm flex flex-col items-center">
-                  <span className="text-xl font-black text-slate-800">
-                    {historyLog.length}
-                  </span>
-                  <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">
-                    Registros
-                  </span>
-                </div>
-                <div className="bg-white p-4 rounded-3xl border border-slate-100 shadow-sm flex flex-col items-center">
-                  <span className="text-xl font-black text-slate-800">
-                    {messagesList.length}
-                  </span>
-                  <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">
-                    Avisos
-                  </span>
-                </div>
-              </div>
             </div>
           )}
 
@@ -621,19 +542,16 @@ MIENTRAS ESTÉS HACIENDO PREGUNTAS (ej. preguntando la empresa o el apellido), N
                     Conversación Fluida
                   </p>
                 </div>
-                <div className="flex items-center space-x-2">
-                  <div
-                    className={`px-2 py-1 ${
-                      isFluidMode
-                        ? "bg-green-100 text-green-700"
-                        : "bg-slate-100 text-slate-500"
-                    } text-[8px] font-black rounded-full transition-colors`}
-                  >
-                    {isFluidMode ? "CONSERJE DESPIERTO" : "MODO DORMIDO"}
-                  </div>
+                <div
+                  className={`px-2 py-1 ${
+                    isFluidMode
+                      ? "bg-green-100 text-green-700"
+                      : "bg-slate-100 text-slate-500"
+                  } text-[8px] font-black rounded-full`}
+                >
+                  {isFluidMode ? "CONSERJE DESPIERTO" : "MODO DORMIDO"}
                 </div>
               </div>
-
               <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
                 {chatHistory.map((msg, idx) => (
                   <div
@@ -670,7 +588,6 @@ MIENTRAS ESTÉS HACIENDO PREGUNTAS (ej. preguntando la empresa o el apellido), N
                 )}
                 <div ref={chatEndRef} />
               </div>
-
               <div className="p-4 bg-white border-t border-slate-100">
                 <div className="flex flex-col items-center space-y-4">
                   <button
@@ -680,7 +597,7 @@ MIENTRAS ESTÉS HACIENDO PREGUNTAS (ej. preguntando la empresa o el apellido), N
                         ? isListening
                           ? "bg-red-500 scale-110 animate-pulse ring-8 ring-red-100"
                           : "bg-amber-400 ring-8 ring-amber-50"
-                        : "bg-slate-200 hover:bg-slate-300"
+                        : "bg-slate-200"
                     }`}
                   >
                     {isFluidMode ? (
@@ -693,41 +610,21 @@ MIENTRAS ESTÉS HACIENDO PREGUNTAS (ej. preguntando la empresa o el apellido), N
                       <MicOff size={32} className="text-slate-400" />
                     )}
                   </button>
-                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest text-center transition-all">
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">
                     {isFluidMode
                       ? isListening
                         ? "Escuchando..."
-                        : "Conserje hablando..."
+                        : "Hablando..."
                       : "Toca el micro para despertar"}
                   </p>
-
-                  <div className="w-full relative flex items-center mt-2 opacity-50 focus-within:opacity-100 transition-opacity">
-                    <input
-                      type="text"
-                      value={chatInput}
-                      onChange={(e) => setChatInput(e.target.value)}
-                      onKeyPress={(e) =>
-                        e.key === "Enter" && handleSimulateVisitor()
-                      }
-                      placeholder="O escribe algo..."
-                      className="w-full bg-slate-50 text-base text-slate-800 rounded-xl px-4 py-3 focus:outline-none border border-slate-100"
-                    />
-                    <button
-                      onClick={() => handleSimulateVisitor()}
-                      disabled={isTyping}
-                      className="absolute right-2 p-2 bg-[#00479b] text-white rounded-lg"
-                    >
-                      <Send size={16} />
-                    </button>
-                  </div>
                 </div>
               </div>
             </div>
           )}
 
           {activeTab === "history" && (
-            <div className="animate-in fade-in slide-in-from-right-4 duration-500 py-4">
-              <h2 className="text-xl font-black text-slate-800 mb-6 tracking-tight">
+            <div className="animate-in fade-in slide-in-from-right-4 duration-500 py-4 px-6">
+              <h2 className="text-xl font-black text-slate-800 mb-6">
                 Actividad
               </h2>
               <div className="space-y-3">
@@ -736,32 +633,18 @@ MIENTRAS ESTÉS HACIENDO PREGUNTAS (ej. preguntando la empresa o el apellido), N
                     key={log.id}
                     className="bg-white p-4 rounded-3xl shadow-sm border border-slate-100 flex items-center space-x-3"
                   >
-                    <div
-                      className={`p-2.5 rounded-xl ${
-                        log.type === "ai_open"
-                          ? "bg-green-100 text-[#7bc100]"
-                          : "bg-blue-100 text-[#00479b]"
-                      } `}
-                    >
-                      {log.type === "ai_open" ? (
-                        <Package size={18} />
-                      ) : (
-                        <User size={18} />
-                      )}
+                    <div className="p-2.5 rounded-xl bg-blue-100 text-[#00479b]">
+                      <User size={18} />
                     </div>
                     <div className="flex-1">
-                      <h4 className="font-bold text-slate-800 text-xs mb-1">
+                      <h4 className="font-bold text-slate-800 text-xs">
                         {log.title}
                       </h4>
-                      <p className="text-[10px] text-slate-500 truncate">
-                        {log.desc}
-                      </p>
+                      <p className="text-[10px] text-slate-500">{log.desc}</p>
                     </div>
-                    <div className="text-right shrink-0">
-                      <span className="text-[10px] font-black text-slate-700 block">
-                        {log.time}
-                      </span>
-                    </div>
+                    <span className="text-[10px] font-black text-slate-700">
+                      {log.time}
+                    </span>
                   </div>
                 ))}
               </div>
@@ -769,7 +652,7 @@ MIENTRAS ESTÉS HACIENDO PREGUNTAS (ej. preguntando la empresa o el apellido), N
           )}
 
           {activeTab === "messages" && (
-            <div className="animate-in fade-in slide-in-from-right-4 duration-500 py-4">
+            <div className="animate-in fade-in slide-in-from-right-4 duration-500 py-4 px-6">
               <h2 className="text-xl font-black text-slate-800 mb-6 tracking-tight">
                 Recados
               </h2>
@@ -828,11 +711,10 @@ MIENTRAS ESTÉS HACIENDO PREGUNTAS (ej. preguntando la empresa o el apellido), N
           )}
 
           {activeTab === "settings" && (
-            <div className="animate-in fade-in slide-in-from-right-4 duration-500 space-y-5 py-4">
-              <h2 className="text-xl font-black text-slate-800 mb-6 tracking-tight">
-                Configuración
+            <div className="animate-in fade-in slide-in-from-right-4 duration-500 py-4 px-6 space-y-6">
+              <h2 className="text-xl font-black text-slate-800 mb-6">
+                Ajustes
               </h2>
-
               <div className="bg-white rounded-3xl p-5 shadow-sm border border-slate-100">
                 <div className="flex items-center space-x-3 mb-4">
                   <UserPlus size={18} className="text-[#00479b]" />
@@ -840,87 +722,24 @@ MIENTRAS ESTÉS HACIENDO PREGUNTAS (ej. preguntando la empresa o el apellido), N
                     Personas Autorizadas
                   </h3>
                 </div>
-
-                <div className="space-y-2 mb-4">
+                <div className="space-y-2">
                   {authorizedNames.map((person, index) => (
                     <div
                       key={index}
                       className="flex justify-between items-center bg-slate-50 p-2.5 rounded-xl border border-slate-100"
                     >
-                      <div className="overflow-hidden">
-                        <span className="text-xs font-bold text-slate-700 block truncate">
-                          {person.name}
-                        </span>
-                        <span className="text-[9px] text-slate-400 font-bold">
-                          {person.phone}
-                        </span>
-                      </div>
+                      <span className="text-xs font-bold text-slate-700">
+                        {person.name}
+                      </span>
                       <button
                         onClick={() => handleRemoveName(person.name)}
-                        className="text-red-400 p-2 hover:bg-red-50 rounded-lg"
+                        className="text-red-400 p-1"
                       >
                         <X size={16} />
                       </button>
                     </div>
                   ))}
                 </div>
-
-                <div className="space-y-2">
-                  <input
-                    type="text"
-                    value={newName}
-                    onChange={(e) => setNewName(e.target.value)}
-                    placeholder="Nombre completo"
-                    className="w-full bg-slate-50 border border-slate-200 text-base text-slate-800 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#7bc100]/20"
-                  />
-                  <div className="flex space-x-2">
-                    <div className="flex-1 bg-slate-50 border border-slate-200 rounded-lg flex items-center px-3">
-                      <span className="text-slate-400 text-sm font-bold border-r border-slate-200 pr-2 mr-2">
-                        +34
-                      </span>
-                      <input
-                        type="tel"
-                        value={newPhone}
-                        onChange={(e) => setNewPhone(e.target.value)}
-                        placeholder="Teléfono"
-                        className="bg-transparent text-base text-slate-800 w-full py-2.5 focus:outline-none"
-                      />
-                    </div>
-                    <button
-                      onClick={handleAddName}
-                      className="bg-[#00479b] text-white px-4 rounded-lg text-xs font-bold shadow-lg shadow-blue-900/20 active:scale-95 transition-all"
-                    >
-                      OK
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              <div className="bg-white rounded-3xl p-5 shadow-sm border border-slate-100 space-y-1">
-                <button className="w-full flex justify-between items-center p-2.5 hover:bg-slate-50 rounded-xl transition-all">
-                  <div className="flex items-center space-x-3">
-                    <Wifi size={18} className="text-slate-400" />
-                    <span className="text-xs font-bold text-slate-700">
-                      Configurar WiFi
-                    </span>
-                  </div>
-                  <ChevronRight size={16} className="text-slate-300" />
-                </button>
-                <button className="w-full flex justify-between items-center p-2.5 hover:bg-red-50 rounded-xl transition-all text-red-500">
-                  <div className="flex items-center space-x-3">
-                    <LogOut size={18} />
-                    <span className="text-xs font-bold">Desconectar App</span>
-                  </div>
-                </button>
-              </div>
-
-              <div className="text-center pt-2 pb-6">
-                <p className="text-[9px] font-black text-[#00479b] tracking-[0.2em]">
-                  MICROSMART.ES
-                </p>
-                <p className="text-[8px] text-slate-300 font-bold mt-1 uppercase">
-                  Control Inteligente v1.7
-                </p>
               </div>
             </div>
           )}
@@ -970,7 +789,7 @@ function NavItem({ active, onClick, icon, label, badge }) {
     <button
       onClick={onClick}
       className={`relative flex-1 flex flex-col items-center justify-center p-1.5 transition-all duration-300 ${
-        active ? "text-[#00479b]" : "text-slate-400 hover:text-slate-600"
+        active ? "text-[#00479b]" : "text-slate-400"
       }`}
     >
       <div
@@ -992,9 +811,6 @@ function NavItem({ active, onClick, icon, label, badge }) {
       >
         {label}
       </span>
-      {active && (
-        <div className="absolute bottom-0 w-1 h-1 bg-[#00479b] rounded-full"></div>
-      )}
     </button>
   );
 }
