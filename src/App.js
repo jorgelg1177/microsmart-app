@@ -29,23 +29,19 @@ import {
 } from "lucide-react";
 
 /**
- * Utility function for API calls with automatic retries and professional error handling
+ * Función de utilidad para llamadas a la API con reintentos automáticos
  */
 const fetchWithRetry = async (url, options, retries = 2, delay = 1000) => {
   try {
     const res = await fetch(url, options);
     if (!res.ok) {
       const errorData = await res.json().catch(() => null);
-      console.error("API Error:", res.status, errorData);
+      console.error("Error de API:", res.status, errorData);
       if (res.status === 401) {
-        throw new Error(
-          "Error 401: Clave de API inválida o revocada por Google."
-        );
+        throw new Error("Error 401: Clave de API inválida o revocada.");
       }
       if (res.status === 404) {
-        throw new Error(
-          "Error 404: El modelo de IA no se encuentra disponible. Verifica que la clave de AI Studio sea correcta."
-        );
+        throw new Error("Error 404: El modelo de IA no se encuentra.");
       }
       if (res.status === 400 || res.status === 403 || res.status === 429) {
         throw new Error(
@@ -152,19 +148,11 @@ export default function App() {
   const chatEndRef = useRef(null);
 
   // =========================================================================
-  // --- SECURITY: SPLIT API KEY ---
-  // Technique to avoid automatic revocation by Google when uploading to GitHub.
-  // The key is reconstructed in memory at runtime.
+  // --- CONFIGURACIÓN DE IA (REVERSIÓN A LO QUE FUNCIONABA) ---
+  // Ponemos la clave completa y volvemos al modelo 2.5 Flash Preview.
   // =========================================================================
-  const part1 = "AIzaSyC";
-  const part2 = "DxhTsxF-21";
-  const part3 = "aqUkqEnABb";
-  const part4 = "dlk0DQ9QARzk";
-
-  const apiKey = (part1 + part2 + part3 + part4).trim();
-
-  // Using Gemini 1.5 Flash (Most compatible model for AI Studio keys)
-  const aiModel = "gemini-1.5-flash";
+  const apiKey = "AIzaSyCDxhTsxF-21aqUkqEnABbdlk0DQ9QARzk";
+  const aiModel = "gemini-2.5-flash-preview-09-2025";
 
   useEffect(() => {
     authorizedNamesRef.current = authorizedNames;
@@ -410,10 +398,7 @@ export default function App() {
     if (!apiKey) {
       setChatHistory((prev) => [
         ...prev,
-        {
-          role: "ai",
-          content: "⚠️ Sistema: Error en la reconstrucción de la clave.",
-        },
+        { role: "ai", content: "⚠️ Sistema: No se detecta la clave API." },
       ]);
       setIsTyping(false);
       isProcessingRef.current = false;
