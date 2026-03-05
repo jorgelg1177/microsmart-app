@@ -139,7 +139,7 @@ export default function App() {
   const chatEndRef = useRef(null);
 
   // Tu API KEY de Google Gemini
-  const apiKey = "AIzaSyCV4h1hmZg0bj-qi_YO3K8CjkFyjZumqmg";
+  const apiKey = "AIzaSyCqet9BiQZIODJhJRAV6NKFxqndizj3s7s";
 
   // Precargar las voces del sistema
   useEffect(() => {
