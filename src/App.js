@@ -37,12 +37,10 @@ const fetchWithRetry = async (url, options, retries = 2, delay = 1000) => {
     if (!res.ok) {
       const errorData = await res.json().catch(() => null);
       console.error("Error de API:", res.status, errorData);
-      if (res.status === 401) {
+      if (res.status === 401)
         throw new Error("Error 401: Clave de API inválida o revocada.");
-      }
-      if (res.status === 404) {
+      if (res.status === 404)
         throw new Error("Error 404: El modelo de IA no se encuentra.");
-      }
       if (res.status === 400 || res.status === 403 || res.status === 429) {
         throw new Error(
           `Error de Google (${res.status}): ${
@@ -101,25 +99,8 @@ export default function App() {
   ]);
   const [newName, setNewName] = useState("");
   const [newPhone, setNewPhone] = useState("");
-  const [historyLog, setHistoryLog] = useState([
-    {
-      id: 1,
-      type: "manual",
-      title: "Apertura Manual",
-      desc: "Carlos García (Tú)",
-      time: "09:00",
-      date: "Hoy",
-    },
-  ]);
-  const [messagesList, setMessagesList] = useState([
-    {
-      id: 1,
-      recipient: "Carlos García",
-      content: "Vino un mensajero buscando entregar unas llaves.",
-      time: "10:15",
-      phone: "+34 600 111 222",
-    },
-  ]);
+  const [historyLog, setHistoryLog] = useState([]);
+  const [messagesList, setMessagesList] = useState([]);
   const [chatInput, setChatInput] = useState("");
   const [isTyping, setIsTyping] = useState(false);
 
@@ -148,7 +129,7 @@ export default function App() {
   const [apiHistory, setApiHistory] = useState([]);
 
   // =========================================================================
-  // --- CONFIGURACIÓN DE IA CON VARIABLE DE ENTORNO ---
+  // --- CONFIGURACIÓN DE IA (LEYENDO VARIABLE DEL ENTORNO .ENV) ---
   // =========================================================================
   const apiKey = process.env.REACT_APP_GEMINI_API_KEY;
   const aiModel = "gemini-2.5-flash";
@@ -167,12 +148,14 @@ export default function App() {
 
   const handleSummarizeActivity = async () => {
     if (!apiKey) {
-      setActivitySummary(
-        "Falta configurar la clave API (VITE_GEMINI_API_KEY)."
-      );
+      setActivitySummary("Falta configurar la clave API.");
       return;
     }
-    if (historyLog.length === 0 || isSummarizing) return;
+    if (historyLog.length === 0) {
+      setActivitySummary("No hay actividad registrada hoy para resumir.");
+      return;
+    }
+    if (isSummarizing) return;
     setIsSummarizing(true);
     const activityData = historyLog
       .map((log) => `${log.time}: ${log.title} - ${log.desc}`)
@@ -198,7 +181,7 @@ export default function App() {
 
   const handleDraftReply = async (message) => {
     if (!apiKey) {
-      alert("Falta configurar la clave API (VITE_GEMINI_API_KEY).");
+      alert("Falta configurar la clave API.");
       return;
     }
     setDraftingId(message.id);
@@ -235,23 +218,22 @@ export default function App() {
       const utterance = new SpeechSynthesisUtterance(cleanText);
       utterance.lang = "es-ES";
       const voices = window.speechSynthesis.getVoices();
-      const preferredNames = [
-        "google",
-        "premium",
-        "natural",
-        "monica",
-        "paulina",
-        "jorge",
-      ];
+
+      // Intentar forzar voces Premium/Enhanced en móviles o escritorio
       let bestVoice = voices.find(
         (v) =>
           (v.lang.startsWith("es-") || v.lang === "es") &&
-          preferredNames.some((name) => v.name.toLowerCase().includes(name))
+          (v.name.includes("Premium") ||
+            v.name.includes("Enhanced") ||
+            v.name.includes("Google") ||
+            v.name.includes("Siri") ||
+            v.name.includes("Natural"))
       );
       if (!bestVoice)
         bestVoice = voices.find(
           (v) => v.lang.startsWith("es-") || v.lang === "es"
         );
+
       if (bestVoice) utterance.voice = bestVoice;
       utterance.rate = 1.0;
       utterance.pitch = 1.0;
@@ -408,7 +390,7 @@ export default function App() {
         {
           role: "ai",
           content:
-            "⚠️ Sistema: No se detecta la clave API (revisa tu archivo .env).",
+            "⚠️ Sistema: No se detecta la clave API (revisa tu archivo .env o configuración de Vercel).",
         },
       ]);
       setIsTyping(false);
@@ -483,12 +465,83 @@ Añade [FIN_CONVERSACION] solo cuando autorices paso, guardes recado o rechaces 
 
       let actionType = null,
         endConversation = false;
-      if (aiText.includes("[ABRIR_PUERTA")) actionType = "opened";
-      else if (aiText.includes("[MENSAJE_PARA")) actionType = "message_saved";
-      else if (aiText.includes("[ACCESO_DENEGADO")) actionType = "denied";
+      const finalAiText = aiText.replace(/\[.*?\]/g, "").trim();
+
+      // LOGICA PARA ATRAPAR ETIQUETAS DE LA IA
+      const abrirMatch = aiText.match(
+        /\[ABRIR_PUERTA\s*\|\s*(.*?)\s*\|\s*(.*?)\]/
+      );
+      if (abrirMatch) {
+        actionType = "opened";
+        const empresa = abrirMatch[1].trim();
+        const destinatario = abrirMatch[2].trim();
+
+        setHistoryLog((prev) => [
+          {
+            id: Date.now(),
+            type: "ai_open",
+            title: `Paquete: ${empresa}`,
+            desc: `Destinatario: ${destinatario}`,
+            time: getCurrentTime(),
+            date: "Hoy",
+          },
+          ...prev,
+        ]);
+      }
+
+      const mensajeMatch = aiText.match(
+        /\[MENSAJE_PARA\s*\|\s*(.*?)\s*\|\s*(.*?)\]/
+      );
+      if (mensajeMatch) {
+        actionType = "message_saved";
+        const destinatario = mensajeMatch[1].trim();
+        const textoMensaje = mensajeMatch[2].trim();
+
+        setMessagesList((prev) => [
+          {
+            id: Date.now(),
+            recipient: destinatario,
+            content: textoMensaje,
+            time: getCurrentTime(),
+            phone:
+              authorizedNamesRef.current.find((p) => p.name === destinatario)
+                ?.phone || "Desconocido",
+          },
+          ...prev,
+        ]);
+
+        setHistoryLog((prev) => [
+          {
+            id: Date.now() + 1,
+            type: "ai_message",
+            title: `Recado guardado`,
+            desc: `Para: ${destinatario}`,
+            time: getCurrentTime(),
+            date: "Hoy",
+          },
+          ...prev,
+        ]);
+      }
+
+      const rechazoMatch = aiText.match(/\[ACCESO_DENEGADO\s*\|\s*(.*?)\]/);
+      if (rechazoMatch) {
+        actionType = "denied";
+        const motivo = rechazoMatch[1].trim();
+        setHistoryLog((prev) => [
+          {
+            id: Date.now(),
+            type: "ai_denied",
+            title: `Acceso Denegado`,
+            desc: motivo,
+            time: getCurrentTime(),
+            date: "Hoy",
+          },
+          ...prev,
+        ]);
+      }
+
       if (aiText.includes("[FIN_CONVERSACION]")) endConversation = true;
 
-      const finalAiText = aiText.replace(/\[.*?\]/g, "").trim();
       setChatHistory((prev) => [
         ...prev,
         { role: "ai", content: finalAiText, action: actionType },
@@ -535,7 +588,7 @@ Añade [FIN_CONVERSACION] solo cuando autorices paso, guardes recado o rechaces 
             </div>
             <div className="overflow-hidden">
               <h1 className="text-base font-bold text-slate-800 leading-tight truncate">
-                Hola, {authorizedNames[0]?.name?.split(" ")[0]}
+                Hola, {authorizedNames[0]?.name?.split(" ")[0] || "Propietario"}
               </h1>
               <p className="text-[10px] text-slate-500 font-medium flex items-center">
                 <MapPin size={10} className="mr-1 text-[#7bc100]" />{" "}
@@ -693,8 +746,12 @@ Añade [FIN_CONVERSACION] solo cuando autorices paso, guardes recado o rechaces 
                 </h2>
                 <button
                   onClick={handleSummarizeActivity}
-                  disabled={isSummarizing}
-                  className="flex items-center space-x-1 bg-[#00479b] text-white px-3 py-1.5 rounded-full text-[10px] font-bold shadow-lg shadow-blue-900/20 active:scale-95 transition-all"
+                  disabled={isSummarizing || historyLog.length === 0}
+                  className={`flex items-center space-x-1 px-3 py-1.5 rounded-full text-[10px] font-bold shadow-lg transition-all ${
+                    historyLog.length === 0
+                      ? "bg-slate-200 text-slate-400 shadow-none"
+                      : "bg-[#00479b] text-white shadow-blue-900/20 active:scale-95"
+                  }`}
                 >
                   {isSummarizing ? (
                     <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
@@ -721,39 +778,55 @@ Añade [FIN_CONVERSACION] solo cuando autorices paso, guardes recado o rechaces 
                 </div>
               )}
               <div className="space-y-3">
-                {historyLog.map((log) => (
-                  <div
-                    key={log.id}
-                    className="bg-white p-4 rounded-3xl shadow-sm border border-slate-100 flex items-center space-x-3"
-                  >
-                    <div
-                      className={`p-2.5 rounded-xl ${
-                        log.type === "ai_open"
-                          ? "bg-green-100 text-[#7bc100]"
-                          : "bg-blue-100 text-[#00479b]"
-                      }`}
-                    >
-                      {log.type === "ai_open" ? (
-                        <Package size={18} />
-                      ) : (
-                        <User size={18} />
-                      )}
-                    </div>
-                    <div className="flex-1">
-                      <h4 className="font-bold text-slate-800 text-xs mb-1">
-                        {log.title}
-                      </h4>
-                      <p className="text-[10px] text-slate-500 truncate">
-                        {log.desc}
-                      </p>
-                    </div>
-                    <div className="text-right shrink-0">
-                      <span className="text-[10px] font-black text-slate-700 block">
-                        {log.time}
-                      </span>
-                    </div>
+                {historyLog.length === 0 ? (
+                  <div className="text-center py-10">
+                    <p className="text-slate-400 font-bold text-xs">
+                      Aún no hay actividad hoy
+                    </p>
                   </div>
-                ))}
+                ) : (
+                  historyLog.map((log) => (
+                    <div
+                      key={log.id}
+                      className="bg-white p-4 rounded-3xl shadow-sm border border-slate-100 flex items-center space-x-3"
+                    >
+                      <div
+                        className={`p-2.5 rounded-xl ${
+                          log.type === "ai_open"
+                            ? "bg-green-100 text-[#7bc100]"
+                            : log.type === "ai_denied"
+                            ? "bg-red-100 text-red-500"
+                            : log.type === "ai_message"
+                            ? "bg-amber-100 text-amber-500"
+                            : "bg-blue-100 text-[#00479b]"
+                        }`}
+                      >
+                        {log.type === "ai_open" ? (
+                          <Package size={18} />
+                        ) : log.type === "ai_denied" ? (
+                          <ShieldAlert size={18} />
+                        ) : log.type === "ai_message" ? (
+                          <MessageSquare size={18} />
+                        ) : (
+                          <User size={18} />
+                        )}
+                      </div>
+                      <div className="flex-1">
+                        <h4 className="font-bold text-slate-800 text-xs mb-1">
+                          {log.title}
+                        </h4>
+                        <p className="text-[10px] text-slate-500 truncate">
+                          {log.desc}
+                        </p>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <span className="text-[10px] font-black text-slate-700 block">
+                          {log.time}
+                        </span>
+                      </div>
+                    </div>
+                  ))
+                )}
               </div>
             </div>
           )}
@@ -900,7 +973,7 @@ Añade [FIN_CONVERSACION] solo cuando autorices paso, guardes recado o rechaces 
                   <div className="flex items-center space-x-3">
                     <Wifi size={18} className="text-slate-400" />
                     <span className="text-xs font-bold text-slate-700">
-                      Configurar WiFi
+                      Configurar WiFi del ESP32
                     </span>
                   </div>
                   <ChevronRight size={16} className="text-slate-300" />
