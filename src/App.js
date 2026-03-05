@@ -150,32 +150,36 @@ export default function App() {
   const chatEndRef = useRef(null);
 
   // --- SEGURIDAD: BÚSQUEDA EXHAUSTIVA DE CLAVE API ---
-  // Simplificado para evitar problemas de compilación en ciertos entornos.
-  // IMPORTANTE: Para que esto funcione en Vercel de forma segura, asegúrate de que
-  // VITE_GEMINI_API_KEY está definida en tus variables de entorno.
-  // En entornos donde process.env no está disponible, esta variable será indefinida
-  // y se mostrará un mensaje de error adecuado en la UI.
-
+  // IMPORTANTE: Si CodeSandbox muestra un warning amarillo sobre "import.meta", IGNÓRALO.
+  // Es necesario escribirlo exactamente así para que Vercel inyecte tu clave correctamente.
   const getApiKey = () => {
-    // Intentamos acceder a variables de entorno de diferentes maneras
-    // Se evitan accesos directos a import.meta si no es seguro
     let key = "";
     try {
-      if (typeof process !== "undefined" && process.env) {
+      // Vite exige esta sintaxis exacta para reemplazar la variable al compilar.
+      key = import.meta.env.VITE_GEMINI_API_KEY;
+    } catch (e) {
+      // Ignorar error si no estamos en entorno Vite
+    }
+
+    if (!key || key === "undefined" || key === "null") {
+      try {
         key =
           process.env.VITE_GEMINI_API_KEY ||
           process.env.REACT_APP_GEMINI_API_KEY ||
-          process.env.NEXT_PUBLIC_GEMINI_API_KEY ||
           "";
-      }
-    } catch (e) {
-      // Ignorar errores si process no está definido
+      } catch (e) {}
     }
-    return key ? key.trim() : "";
+
+    return key &&
+      typeof key === "string" &&
+      key !== "undefined" &&
+      key !== "null"
+      ? key.trim()
+      : "";
   };
 
   const apiKey = getApiKey();
-  const aiModel = "gemini-1.5-flash"; // Forzamos el modelo público y estable siempre para evitar el error 404
+  const aiModel = "gemini-1.5-flash"; // Modelo principal estable
 
   useEffect(() => {
     authorizedNamesRef.current = authorizedNames;
@@ -192,7 +196,7 @@ export default function App() {
   const handleSummarizeActivity = async () => {
     if (!apiKey) {
       setActivitySummary(
-        "Error: Clave de API no configurada. Revisa la configuración de entorno."
+        "Error: Clave de API no configurada correctamente en Vercel."
       );
       return;
     }
@@ -429,7 +433,7 @@ export default function App() {
         {
           role: "ai",
           content:
-            "⚠️ Sistema: No se detecta la clave API. Asegúrate de configurar la variable de entorno correspondiente en tu plataforma (como Vercel).",
+            "⚠️ Sistema: No se detecta la clave API. Por favor, asegúrate de haber actualizado el código en Vercel (Redeploy).",
         },
       ]);
       setIsTyping(false);
@@ -857,7 +861,6 @@ Añade [FIN_CONVERSACION] solo cuando autorices paso, guardes recado o rechaces 
               <h2 className="text-xl font-black text-slate-800 mb-6 tracking-tight">
                 Configuración
               </h2>
-
               <div className="bg-white rounded-3xl p-5 shadow-sm border border-slate-100">
                 <div className="flex items-center space-x-3 mb-4">
                   <UserPlus size={18} className="text-[#00479b]" />
@@ -865,7 +868,6 @@ Añade [FIN_CONVERSACION] solo cuando autorices paso, guardes recado o rechaces 
                     Personas Autorizadas
                   </h3>
                 </div>
-
                 <div className="space-y-2 mb-4">
                   {authorizedNames.map((person, index) => (
                     <div
@@ -889,18 +891,17 @@ Añade [FIN_CONVERSACION] solo cuando autorices paso, guardes recado o rechaces 
                     </div>
                   ))}
                 </div>
-
                 <div className="space-y-2">
                   <input
                     type="text"
                     value={newName}
                     onChange={(e) => setNewName(e.target.value)}
                     placeholder="Nombre completo"
-                    className="w-full bg-slate-50 border border-slate-200 text-base text-slate-800 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#7bc100]/20"
+                    className="w-full bg-slate-50 border border-slate-200 text-base text-slate-800 rounded-lg px-3 py-2.5 focus:outline-none"
                   />
                   <div className="flex space-x-2">
                     <div className="flex-1 bg-slate-50 border border-slate-200 rounded-lg flex items-center px-3">
-                      <span className="text-slate-400 text-sm font-bold border-r border-slate-200 pr-2 mr-2">
+                      <span className="text-slate-400 text-sm font-bold pr-2 mr-2 border-r border-slate-200">
                         +34
                       </span>
                       <input
@@ -920,7 +921,6 @@ Añade [FIN_CONVERSACION] solo cuando autorices paso, guardes recado o rechaces 
                   </div>
                 </div>
               </div>
-
               <div className="bg-white rounded-3xl p-5 shadow-sm border border-slate-100 space-y-1">
                 <button className="w-full flex justify-between items-center p-2.5 hover:bg-slate-50 rounded-xl transition-all">
                   <div className="flex items-center space-x-3">
