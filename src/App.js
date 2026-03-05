@@ -317,9 +317,10 @@ PROTOCOLO:
         <div className="h-6 w-1/3 bg-[#1e293b] absolute top-0 left-1/2 -translate-x-1/2 rounded-b-2xl z-30"></div>
 
         {/* Cabecera con Logo */}
-        <div className="bg-white px-6 pt-10 pb-4 flex flex-col z-10">
+        <div className="bg-white px-6 pt-12 pb-4 flex flex-col z-10">
           <div className="flex justify-between items-center mb-6">
-            <MicroSmartLogo className="h-10 w-auto flex items-center" />
+            {/* Aumentado de h-10 a h-16 para que el logo sea más grande */}
+            <MicroSmartLogo className="h-16 w-auto flex items-center" />
             <div className="flex space-x-2">
               <button className="p-2 hover:bg-slate-100 rounded-full transition-colors relative">
                 <Bell size={20} className="text-slate-600" />
