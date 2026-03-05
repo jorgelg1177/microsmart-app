@@ -122,13 +122,11 @@ export default function App() {
   const [activitySummary, setActivitySummary] = useState("");
   const [draftingId, setDraftingId] = useState(null);
 
-  // Referencias para el Bucle de Voz y Memoria
+  // Referencias para el Bucle de Voz y Memoria Inmune a Closures (Solución a la amnesia)
   const isFluidModeRef = useRef(false);
   const isProcessingRef = useRef(false);
   const isSpeakingRef = useRef(false);
   const recognitionRef = useRef(null);
-
-  // SOLUCIÓN AL BUG DE AMNESIA: Estas referencias mantienen el estado fresco para los eventos de voz
   const apiHistoryRef = useRef([]);
   const authorizedNamesRef = useRef(authorizedNames);
 
@@ -142,10 +140,11 @@ export default function App() {
   const [apiHistory, setApiHistory] = useState([]);
   const chatEndRef = useRef(null);
 
-  // Tu API KEY de Google Gemini
-  const apiKey = "AIzaSyCqet9BiQZIODJhJRAV6NKFxqndizj3s7s";
+  // --- SEGURIDAD: CLAVE API OCULTA ---
+  // Pega temporalmente tu clave API aquí dentro de las comillas para hacer las pruebas en este entorno.
+  const apiKey = "";
 
-  // Sincronizar referencias
+  // Sincronizar referencias para eventos de voz
   useEffect(() => {
     authorizedNamesRef.current = authorizedNames;
   }, [authorizedNames]);
@@ -162,12 +161,13 @@ export default function App() {
 
   // --- FUNCIONES IA: RESUMEN Y REDACCIÓN ---
   const handleSummarizeActivity = async () => {
+    if (!apiKey) return;
     if (historyLog.length === 0 || isSummarizing) return;
     setIsSummarizing(true);
     const activityData = historyLog
       .map((log) => `${log.time}: ${log.title} - ${log.desc}`)
       .join("\n");
-    const prompt = `Resume brevemente la actividad de hoy del portero: ${activityData}`;
+    const prompt = `Resume brevemente la actividad de hoy del portero de forma profesional: ${activityData}`;
     try {
       const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
       const response = await fetchWithRetry(url, {
@@ -187,8 +187,9 @@ export default function App() {
   };
 
   const handleDraftReply = async (message) => {
+    if (!apiKey) return;
     setDraftingId(message.id);
-    const prompt = `Redacta una respuesta de WhatsApp muy corta y amable para este recado: "${message.content}"`;
+    const prompt = `Redacta una respuesta de WhatsApp muy corta y amable para este recado dejado en la vivienda: "${message.content}"`;
     try {
       const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
       const response = await fetchWithRetry(url, {
@@ -390,6 +391,20 @@ export default function App() {
     const textToSend = textOverride || chatInput;
     if (!textToSend.trim() || isTyping) return;
 
+    if (!apiKey) {
+      setChatHistory((prev) => [
+        ...prev,
+        {
+          role: "ai",
+          content:
+            "⚠️ Sistema: No se ha configurado la clave API en las variables de entorno de Vercel/CodeSandbox. Revisa la Guía de Lanzamiento.",
+        },
+      ]);
+      setIsTyping(false);
+      isProcessingRef.current = false;
+      return;
+    }
+
     isProcessingRef.current = true;
     if (recognitionRef.current) recognitionRef.current.stop();
 
@@ -398,8 +413,6 @@ export default function App() {
     setIsTyping(true);
 
     const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
-
-    // Leemos de la referencia para no sufrir de "Stale Closures"
     const allowedNamesList =
       authorizedNamesRef.current.length > 0
         ? authorizedNamesRef.current.map((p) => p.name).join(", ")
@@ -409,26 +422,26 @@ export default function App() {
 
 REGLAS DE SEGURIDAD (CUMPLE AL 100%):
 1. ES UNA VIVIENDA, NO UN EDIFICIO: Habla siempre refiriéndote a "esta vivienda".
-2. AMABILIDAD Y CORTESÍA: Sé siempre muy amable, pero firme con la seguridad.
+2. AMABILIDAD Y CORTESÍA: Sé siempre muy amable, profesional y firme con la seguridad.
 3. PRIVACIDAD ABSOLUTA (¡CRÍTICO!): NUNCA reveles, completes ni sugieras el nombre o apellido de los propietarios. Si el visitante dice "Busco a Carlos" o "Traigo un paquete para Carlos", NUNCA le digas "¿Para Carlos García?". Debes preguntar: "¿Me podría indicar el apellido exacto de la persona a la que busca, por favor?".
-4. REGLA DEL SILENCIO SOBRE LA CASA: NUNCA digas que "no hay nadie en casa" ni ofrezcas dejar recados HASTA QUE el visitante haya dicho el NOMBRE Y APELLIDO EXACTOS y estos coincidan con la lista. Si dicen un nombre incorrecto o incompleto, simplemente di que se han equivocado de vivienda o insiste en pedir el nombre completo.
+4. REGLA DEL SILENCIO SOBRE LA CASA: NUNCA digas que "no hay nadie en casa" ni ofrezcas dejar recados HASTA QUE el visitante haya dicho el NOMBRE Y APELLIDO EXACTOS y estos coincidan con la lista. Si dicen un nombre incorrecto o incompleto, simplemente di que se han equivocado de vivienda o insiste en pedir el nombre completo para verificar.
 5. FRASE EXACTA PARA PAQUETES: Si es un repartidor y ya verificaste que la empresa y el destinatario (nombre y apellido) son correctos, tu respuesta DEBE INCLUIR ESTA FRASE EXACTA antes de abrir: "Por favor, entre y ponga el paquete en un lugar seguro y cierre la puerta al salir, por favor y gracias."
-6. NO REPITAS SALUDOS: Ya saludaste al inicio. No vuelvas a decir Hola o Buenos días.
-7. MEMORIA PERFECTA: Recuerda toda la conversación. Si ya te dijeron de qué empresa vienen o a quién buscan, NO LO VUELVAS A PREGUNTAR.
+6. NO REPITAS SALUDOS: Ya saludaste al inicio. No vuelvas a decir Hola o Buenos días durante la charla.
+7. MEMORIA PERFECTA: Recuerda toda la conversación de forma inteligente. Si ya sabes de qué empresa vienen o a quién buscan, no lo preguntes de nuevo.
 
 LISTA DE PROPIETARIOS AUTORIZADOS: [${allowedNamesList}].
 
-PROTOCOLO Y ETIQUETAS SECRETAS (Usa solo una al final de la gestión):
-A. REPARTIDORES VERIFICADOS (Nombre+Apellido exactos + Empresa): Autoriza el paso con la frase exacta de la Regla 5. Usa al final: [ABRIR_PUERTA | Empresa | Destinatario]
-B. VISITAS VERIFICADAS (Nombre+Apellido exactos en la lista): Diles que no pueden atenderle en este momento y ofrece dejar un recado. Usa al final: [MENSAJE_PARA | NombreAutorizado | texto]
-C. DATOS INCORRECTOS / DESCONOCIDOS / COMERCIALES: Rechaza el paso amablemente indicando que no reside ahí. Usa al final: [ACCESO_DENEGADO | Motivo]
+PROTOCOLO Y ETIQUETAS SECRETAS:
+A. REPARTIDORES VERIFICADOS (Nombre+Apellido exactos + Empresa): Usa al final: [ABRIR_PUERTA | Empresa | Destinatario]
+B. VISITAS VERIFICADAS (Nombre+Apellido exactos en la lista): Ofrece dejar un recado. Usa al final: [MENSAJE_PARA | NombreAutorizado | texto]
+C. RECHAZO (No coincide el nombre completo): Indica que no reside nadie con ese nombre completo y deniega el acceso. Usa al final: [ACCESO_DENEGADO | Motivo]
 
-IMPORTANTE: Solo añade [FIN_CONVERSACION] al final de tu mensaje cuando la gestión esté completamente terminada (ya autorizaste paso, tomaste recado o denegaste acceso). Si necesitas preguntar un apellido o la empresa, NO uses esta etiqueta para mantener el micrófono abierto.`;
+Añade [FIN_CONVERSACION] solo cuando autorices paso, guardes recado o rechaces definitivamente.`;
 
-    // USAMOS LA REFERENCIA GLOBAL DEL HISTORIAL (Solución a la "Amnesia")
     let validApiHistory = [...apiHistoryRef.current];
     let combinedText = textToSend;
 
+    // Concatena mensajes si el usuario habla por partes (Solución a la amnesia)
     if (
       validApiHistory.length > 0 &&
       validApiHistory[validApiHistory.length - 1].role === "user"
@@ -436,7 +449,6 @@ IMPORTANTE: Solo añade [FIN_CONVERSACION] al final de tu mensaje cuando la gest
       const lastMsg = validApiHistory.pop();
       combinedText = lastMsg.parts[0].text + ". " + textToSend;
     }
-
     const newApiMsg = { role: "user", parts: [{ text: combinedText }] };
     const contents = [...validApiHistory, newApiMsg];
 
@@ -450,23 +462,21 @@ IMPORTANTE: Solo añade [FIN_CONVERSACION] al final de tu mensaje cuando la gest
           generationConfig: { temperature: 0.3 },
         }),
       });
-
       let aiText = data.candidates?.[0]?.content?.parts?.[0]?.text;
-      if (!aiText) throw new Error("Respuesta vacía.");
+      if (!aiText) throw new Error("Respuesta vacía del servidor.");
 
       const updatedHistory = [
         ...contents,
         { role: "model", parts: [{ text: aiText }] },
       ];
       setApiHistory(updatedHistory);
-      apiHistoryRef.current = updatedHistory; // Guardar en la referencia inmune a closures
+      apiHistoryRef.current = updatedHistory; // Guardar en la referencia
 
       let actionType = null,
         endConversation = false;
       if (aiText.includes("[ABRIR_PUERTA")) actionType = "opened";
       else if (aiText.includes("[MENSAJE_PARA")) actionType = "message_saved";
       else if (aiText.includes("[ACCESO_DENEGADO")) actionType = "denied";
-
       if (aiText.includes("[FIN_CONVERSACION]")) endConversation = true;
 
       const finalAiText = aiText.replace(/\[.*?\]/g, "").trim();
