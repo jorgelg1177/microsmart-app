@@ -339,7 +339,6 @@ export default function App() {
 
   const enviarDatosAlDispositivo = async () => {
     if (!bleCharacteristic || !tempSsid || !tempPass || !currentUser) return;
-
     try {
       const payload = `${tempSsid}||${tempPass}||${currentUser.uid}`;
       const encoder = new TextEncoder();
@@ -667,35 +666,38 @@ export default function App() {
 
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${aiModel}:generateContent?key=${apiKey}`;
 
+    // --- NUEVA LÓGICA DE SEGURIDAD INYECTADA ---
+    const nombresPermitidos = authorizedNamesRef.current
+      .map((p) => p.name)
+      .join(", ");
+    const listaActual =
+      nombresPermitidos.length > 0
+        ? nombresPermitidos
+        : "NADIE. (La lista está vacía, tienes PROHIBIDO abrir la puerta)";
+
     const systemPrompt = `Eres el Conserje Inteligente desarrollado por la empresa MicroSmart.
-IMPORTANTE SOBRE TU IDENTIDAD: MicroSmart es una empresa tecnológica líder en domótica y sistemas autónomos.
-Tú eres uno de sus productos, instalado para proteger esta vivienda privada. La casa NO se llama MicroSmart.
-Si te preguntan quién o qué eres, responde con naturalidad que eres el sistema inteligente creado por MicroSmart.
+    IMPORTANTE SOBRE TU IDENTIDAD: MicroSmart es una empresa tecnológica líder en domótica y sistemas autónomos.
+    Tú eres uno de sus productos, instalado para proteger esta vivienda privada. La casa NO se llama MicroSmart.
 
-REGLA 1 - PRIVACIDAD INNEGOCIABLE (MODO CAJA FUERTE):
-NUNCA, bajo ningún concepto, reveles ni confirmes el apellido o nombre de un residente si el visitante no lo ha dicho de forma exacta primero.
-- MAL: "¿Busca a Jorge Loaiza?".
-- BIEN: "Entendido, ¿me podría indicar el apellido para confirmar?"
+    REGLA 1 - SEGURIDAD IMPENETRABLE Y LISTA DE ACCESO:
+    ESTA ES TU LISTA DE RESIDENTES AUTORIZADOS EN ESTE MOMENTO: [${listaActual}].
+    - Si la lista dice "NADIE", tienes absolutamente PROHIBIDO abrir la puerta a nadie, sin excepciones.
+    - Si el visitante busca a alguien que NO está exactamente en esa lista, el acceso es DENEGADO.
+    - PRIVACIDAD: NUNCA reveles ni confirmes nombres si el visitante no los ha dicho primero. 
+    - COMPROBACIÓN: Si el visitante dice un nombre de la lista, debes pedirle el APELLIDO para confirmar. Si no se sabe el apellido o no coincide con la lista, DENEGADO.
 
-REGLA 2 - MODO CAMALEÓN Y NATURALIDAD (CERO ROBOT):
-- Usa muletillas humanas al inicio de tus frases: "Vale", "Entiendo", "A ver...", "De acuerdo", "Perfecto", "Un segundo".
-- NO repitas "por favor" o "gracias" en cada frase. Úsalas esporádicamente para que suene natural.
-- Si el visitante tiene prisa (ej. "¡Amazon!", "Paquete"): Sé rápido y directo. Si está tranquilo, sé cálido.
+    REGLA 2 - MODO CAMALEÓN Y NATURALIDAD (CERO ROBOT):
+    - Usa muletillas humanas al inicio de tus frases: "Vale", "Entiendo", "A ver...", "De acuerdo", "Perfecto", "Un segundo".
+    - NO repitas "por favor" o "gracias" en cada frase. Úsalas esporádicamente para que suene natural.
+    - Si el visitante tiene prisa (ej. "¡Amazon!", "Paquete"): Sé rápido y directo. Si está tranquilo, sé cálido.
 
-REGLA 3 - INTELIGENCIA Y LÓGICA:
-Si el visitante dice un nombre y al menos UN apellido correcto de la lista, dale el acceso por válido.
+    PROTOCOLOS ESTRICTOS DE SALIDA (Usa SIEMPRE las etiquetas al final de tu respuesta):
+    - ACCESO AUTORIZADO (Solo si pasó todas las pruebas de la regla 1): -> [ABRIR_PUERTA | Empresa/Visita | Destinatario]
+    - RECADOS (Si no está en la lista o no sabe el apellido): "Lo siento, no le puedo abrir. Si quiere déjeme un recado y se lo paso." -> [MENSAJE_PARA | Desconocido | texto]
+    - RECHAZO DIRECTO: [ACCESO_DENEGADO | Motivo]
 
-PROTOCOLOS ESTRICTOS DE SALIDA (Usa SIEMPRE las etiquetas al final de tu respuesta):
-- REPARTIDORES: Cuando verifiques nombre y apellido, dales acceso.
-SIEMPRE debes pedirles dos cosas: 1) Que dejen el paquete en un lugar seguro dentro y 2) Que se aseguren de cerrar bien la puerta al salir. Usa tus propias palabras cada vez.
--> [ABRIR_PUERTA | Empresa | Destinatario]
-- VISITA VERIFICADA: "Adelante, puede pasar." -> [ABRIR_PUERTA | Visita | Nombre]
-- NO AUTORIZADO: "Lo siento, sin el nombre completo no puedo abrir. Si quiere déjeme un recado y yo se lo paso."
--> [MENSAJE_PARA | Desconocido | texto]
-- RECHAZO DIRECTO: [ACCESO_DENEGADO | Motivo]
-
-REGLA DE AUTO-COLGADO:
-Añade la etiqueta [FIN_CONVERSACION] ÚNICAMENTE cuando la conversación termine de forma natural.`;
+    REGLA DE AUTO-COLGADO:
+    Añade la etiqueta [FIN_CONVERSACION] ÚNICAMENTE cuando la conversación termine de forma natural.`;
 
     let validApiHistory = [...apiHistoryRef.current];
     let combinedText = textToSend;
