@@ -658,7 +658,7 @@ Etiquetas: [ABRIR_PUERTA | motivo | nombre], [MENSAJE_PARA | nombre | texto], [F
     return (
       <div className="fixed inset-0 bg-[#f3f4f6] flex items-center justify-center font-sans p-4">
         <div className="w-full max-w-md bg-white rounded-[3rem] p-8 shadow-2xl flex flex-col items-center">
-          <MicroSmartLogo className="h-16 mb-6 scale-150" />
+          <MicroSmartLogo className="h-16 mb-6 scale-110" />
           <h2 className="text-2xl font-black text-slate-800 mb-2">
             Bienvenido a casa
           </h2>
@@ -729,7 +729,7 @@ Etiquetas: [ABRIR_PUERTA | motivo | nombre], [MENSAJE_PARA | nombre | texto], [F
         <div className="hidden md:block h-6 w-1/3 bg-[#1e293b] absolute top-0 left-1/2 -translate-x-1/2 rounded-b-2xl z-30"></div>
         <div className="bg-white px-6 pt-8 pb-3 flex flex-col z-10 border-b border-slate-50 shrink-0">
           <div className="flex justify-between items-center mb-3">
-            <MicroSmartLogo className="h-[100px] w-auto flex items-center" />
+            <MicroSmartLogo className="h-[84px] w-auto flex items-center" />
             <div className="flex space-x-1">
               <button className="p-2 hover:bg-slate-100 rounded-full transition-colors relative">
                 <Bell size={20} className="text-slate-600" />
