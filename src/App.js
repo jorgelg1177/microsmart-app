@@ -34,6 +34,7 @@ import {
   Key,
 } from "lucide-react";
 
+// --- IMPORTACIONES DE FIREBASE ---
 import { initializeApp } from "firebase/app";
 import {
   getAuth,
@@ -46,17 +47,19 @@ import {
 import { getDatabase, ref, set, push, onValue } from "firebase/database";
 
 // =========================================================================
-// ⚠️ TUS CLAVES REALES DE FIREBASE
+// ⚠️ AQUÍ VAN TUS CLAVES REALES DE FIREBASE (Búscalas en la consola de Firebase)
 const firebaseConfig = {
-  apiKey: "TU_API_KEY_AQUÍ",
-  authDomain: "tu-proyecto.firebaseapp.com",
-  databaseURL: "https://tu-proyecto-default-rtdb.firebaseio.com",
-  projectId: "tu-proyecto",
-  storageBucket: "tu-proyecto.appspot.com",
-  messagingSenderId: "TU_SENDER_ID",
-  appId: "TU_APP_ID",
+  apiKey: "AIzaSyAyQe2Ev40lMOx6_gNvMGv6P86oRrGlHvg",
+  authDomain: "portero-a87d8.firebaseapp.com",
+  databaseURL:
+    "https://portero-a87d8-default-rtdb.europe-west1.firebasedatabase.app",
+  projectId: "portero-a87d8",
+  storageBucket: "portero-a87d8.firebasestorage.app",
+  messagingSenderId: "779001621682",
+  appId: "1:779001621682:web:ea0fed5bddc97e489dedab",
 };
 
+// Inicializar Firebase
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getDatabase(app);
@@ -66,11 +69,16 @@ const fetchWithRetry = async (url, options, retries = 2, delay = 1000) => {
   try {
     const res = await fetch(url, options);
     if (!res.ok) {
-      if (res.status === 401) throw new Error("Error 401: Clave inválida.");
+      const errorData = await res.json().catch(() => null);
+      if (res.status === 401)
+        throw new Error("Error 401: Clave de API inválida.");
       if (res.status === 404)
-        throw new Error("Error 404: Modelo no encontrado.");
-      if (res.status === 400 || res.status === 403 || res.status === 429)
-        throw new Error(`Error de Google (${res.status})`);
+        throw new Error("Error 404: El modelo de IA no se encuentra.");
+      if (res.status === 400 || res.status === 403 || res.status === 429) {
+        throw new Error(
+          `Error de Google (${res.status}): Revisar clave API o cuota`
+        );
+      }
       throw new Error(`Error HTTP: ${res.status}`);
     }
     return await res.json();
@@ -78,7 +86,8 @@ const fetchWithRetry = async (url, options, retries = 2, delay = 1000) => {
     if (
       retries > 0 &&
       !error.message.includes("Error 401") &&
-      !error.message.includes("Error 404")
+      !error.message.includes("Error 404") &&
+      !error.message.includes("Error de Google")
     ) {
       await new Promise((r) => setTimeout(r, delay));
       return fetchWithRetry(url, options, retries - 1, delay * 2);
@@ -91,7 +100,7 @@ const MicroSmartLogo = ({ className }) => (
   <div className={className}>
     <img
       src="/logo.png"
-      alt="MicroSmart"
+      alt="MicroSmart Logo"
       className="h-full w-auto object-contain"
       onError={(e) => {
         e.target.style.display = "none";
@@ -104,21 +113,25 @@ const MicroSmartLogo = ({ className }) => (
   </div>
 );
 
-const getCurrentTime = () =>
-  new Date().toLocaleTimeString("es-ES", {
+const getCurrentTime = () => {
+  const now = new Date();
+  return now.toLocaleTimeString("es-ES", {
     hour: "2-digit",
     minute: "2-digit",
   });
+};
 
 export default function App() {
+  // --- ESTADOS DE SEGURIDAD Y REGISTRO ---
   const [currentUser, setCurrentUser] = useState(null);
-  const [authMode, setAuthMode] = useState("login");
+  const [authMode, setAuthMode] = useState("login"); // Puede ser 'login', 'register' o 'reset'
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [authError, setAuthError] = useState("");
   const [authMessage, setAuthMessage] = useState("");
   const [authLoading, setAuthLoading] = useState(false);
 
+  // --- ESTADOS PRINCIPALES DE LA APP ---
   const [activeTab, setActiveTab] = useState("home");
   const [doorStatus, setDoorStatus] = useState("idle");
   const [isPairing, setIsPairing] = useState(false);
@@ -160,9 +173,10 @@ export default function App() {
   ]);
   const [apiHistory, setApiHistory] = useState([]);
 
-  const apiKey = process.env.REACT_APP_GEMINI_API_KEY;
+  const apiKey = process.env.REACT_APP_GEMINI_API_KEY; // Tu clave de Gemini
   const aiModel = "gemini-2.5-flash";
 
+  // --- ESCUCHAR SI EL USUARIO ESTÁ LOGUEADO ---
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       setCurrentUser(user);
@@ -176,34 +190,51 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
+  // --- CARGAR DATOS ÚNICOS DEL USUARIO DESDE FIREBASE ---
   useEffect(() => {
     if (currentUser) {
       const uid = currentUser.uid;
-      onValue(ref(db, `users/${uid}/devices`), (s) =>
-        setPairedDevices(s.val() ? Object.values(s.val()) : [])
-      );
-      onValue(ref(db, `users/${uid}/authorizedNames`), (s) =>
-        setAuthorizedNames(s.val() ? Object.values(s.val()) : [])
-      );
-      onValue(ref(db, `users/${uid}/history`), (s) => {
-        const d = s.val();
-        setHistoryLog(
-          d
-            ? Object.keys(d)
-                .map((k) => ({ ...d[k], dbKey: k }))
-                .sort((a, b) => b.id - a.id)
-            : []
-        );
+
+      // Cargar Dispositivos del usuario
+      onValue(ref(db, `users/${uid}/devices`), (snapshot) => {
+        setPairedDevices(snapshot.val() ? Object.values(snapshot.val()) : []);
       });
-      onValue(ref(db, `users/${uid}/messages`), (s) => {
-        const d = s.val();
-        setMessagesList(
-          d
-            ? Object.keys(d)
-                .map((k) => ({ ...d[k], dbKey: k }))
-                .sort((a, b) => b.id - a.id)
-            : []
-        );
+
+      // Cargar Nombres Autorizados
+      onValue(ref(db, `users/${uid}/authorizedNames`), (snapshot) => {
+        setAuthorizedNames(snapshot.val() ? Object.values(snapshot.val()) : []);
+      });
+
+      // Cargar Historial
+      onValue(ref(db, `users/${uid}/history`), (snapshot) => {
+        const data = snapshot.val();
+        if (data) {
+          const loadedHistory = Object.keys(data)
+            .map((key) => ({
+              ...data[key],
+              dbKey: key,
+            }))
+            .sort((a, b) => b.id - a.id);
+          setHistoryLog(loadedHistory);
+        } else {
+          setHistoryLog([]);
+        }
+      });
+
+      // Cargar Recados (Mensajes)
+      onValue(ref(db, `users/${uid}/messages`), (snapshot) => {
+        const data = snapshot.val();
+        if (data) {
+          const loadedMessages = Object.keys(data)
+            .map((key) => ({
+              ...data[key],
+              dbKey: key,
+            }))
+            .sort((a, b) => b.id - a.id);
+          setMessagesList(loadedMessages);
+        } else {
+          setMessagesList([]);
+        }
       });
     }
   }, [currentUser]);
@@ -211,6 +242,7 @@ export default function App() {
   useEffect(() => {
     authorizedNamesRef.current = authorizedNames;
   }, [authorizedNames]);
+
   useEffect(() => {
     if ("speechSynthesis" in window) {
       window.speechSynthesis.getVoices();
@@ -219,23 +251,24 @@ export default function App() {
     }
   }, []);
 
+  // --- FUNCIONES DE AUTENTICACIÓN ---
   const handleAuth = async (e) => {
     e.preventDefault();
     setAuthError("");
     setAuthMessage("");
     setAuthLoading(true);
     try {
-      if (authMode === "login")
+      if (authMode === "login") {
         await signInWithEmailAndPassword(auth, email, password);
-      else if (authMode === "register") {
+      } else if (authMode === "register") {
         await createUserWithEmailAndPassword(auth, email, password);
-        setAuthMessage("Cuenta creada.");
+        setAuthMessage("Cuenta creada con éxito.");
       } else if (authMode === "reset") {
         await sendPasswordResetEmail(auth, email);
-        setAuthMessage("Revisa tu correo.");
+        setAuthMessage("Revisa tu correo para cambiar la contraseña.");
       }
     } catch (error) {
-      setAuthError("Error: " + error.message);
+      setAuthError("Error: Verifica tus datos. " + error.message);
     } finally {
       setAuthLoading(false);
     }
@@ -243,13 +276,26 @@ export default function App() {
 
   const handleLogout = () => signOut(auth);
 
+  // --- GUARDADO PERSISTENTE EN BASE DE DATOS ---
   const saveToHistory = async (newLog) => {
-    if (currentUser)
-      await push(ref(db, `users/${currentUser.uid}/history`), newLog);
+    if (!currentUser) return;
+    await push(ref(db, `users/${currentUser.uid}/history`), newLog);
   };
-  const saveMessage = async (newMsg) => {
-    if (currentUser)
-      await push(ref(db, `users/${currentUser.uid}/messages`), newMsg);
+
+  const saveMessage = async (newMessage) => {
+    if (!currentUser) return;
+    await push(ref(db, `users/${currentUser.uid}/messages`), newMessage);
+  };
+
+  const handlePairDevice = async () => {
+    if (!currentUser) return;
+    setIsPairing(true);
+    setTimeout(async () => {
+      const newDevice = `ESP32_Interfono_${Math.floor(Math.random() * 1000)}`;
+      const updatedDevices = [...pairedDevices, newDevice];
+      await set(ref(db, `users/${currentUser.uid}/devices`), updatedDevices);
+      setIsPairing(false);
+    }, 3000);
   };
 
   // --- LA MAGIA DEL BLUETOOTH WEB ---
@@ -308,28 +354,35 @@ export default function App() {
       const formattedPhone = newPhone.startsWith("+")
         ? newPhone.trim()
         : `+34 ${newPhone.trim()}`;
-      await set(ref(db, `users/${currentUser.uid}/authorizedNames`), [
+      const updatedNames = [
         ...authorizedNames,
         { name: newName.trim(), phone: formattedPhone },
-      ]);
+      ];
+      await set(
+        ref(db, `users/${currentUser.uid}/authorizedNames`),
+        updatedNames
+      );
       setNewName("");
       setNewPhone("");
     }
   };
 
   const handleRemoveName = async (nameToRemove) => {
-    if (currentUser)
-      await set(
-        ref(db, `users/${currentUser.uid}/authorizedNames`),
-        authorizedNames.filter((p) => p.name !== nameToRemove)
-      );
+    if (!currentUser) return;
+    const updatedNames = authorizedNames.filter(
+      (person) => person.name !== nameToRemove
+    );
+    await set(
+      ref(db, `users/${currentUser.uid}/authorizedNames`),
+      updatedNames
+    );
   };
 
   const handleOpenDoor = async () => {
     if (doorStatus !== "idle" || !currentUser) return;
     setDoorStatus("opening");
     try {
-      await set(ref(db, "puerta"), "ABRIR");
+      await set(ref(db, `users/${currentUser.uid}/puerta/estado`), "ABRIR");
       setDoorStatus("opened");
       saveToHistory({
         id: Date.now(),
@@ -340,13 +393,14 @@ export default function App() {
         date: "Hoy",
       });
     } catch (error) {
-      alert("Error de conexión.");
+      alert("Error de conexión con la base de datos.");
       setDoorStatus("idle");
     } finally {
       setTimeout(() => setDoorStatus("idle"), 2500);
     }
   };
 
+  // --- LÓGICA DE IA Y VOZ (INTACTA) ---
   const resetSilenceTimer = () => {
     if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
     if (isFluidModeRef.current) {
@@ -356,12 +410,16 @@ export default function App() {
           !isProcessingRef.current &&
           !isSpeakingRef.current
         ) {
-          speakResponse("Parece que no hay nadie. Me retiro.", true);
+          speakResponse(
+            "Parece que no hay nadie. Me retiro, que tenga un excelente día.",
+            true
+          );
           setChatHistory((prev) => [
             ...prev,
             {
               role: "ai",
-              content: "Parece que no hay nadie. [Llamada finalizada]",
+              content:
+                "Parece que no hay nadie. Me retiro, que tenga un excelente día. [Llamada finalizada por inactividad]",
             },
           ]);
         }
@@ -380,16 +438,64 @@ export default function App() {
   };
 
   const handleSummarizeActivity = async () => {
-    /* IA Resumen intacta */
+    if (!apiKey) return setActivitySummary("Falta configurar la clave API.");
+    if (historyLog.length === 0)
+      return setActivitySummary(
+        "No hay actividad registrada hoy para resumir."
+      );
+    if (isSummarizing) return;
+    setIsSummarizing(true);
+    const activityData = historyLog
+      .map((log) => `${log.time}: ${log.title} - ${log.desc}`)
+      .join("\n");
+    const prompt = `Resume brevemente la actividad de hoy del portero de forma profesional: ${activityData}`;
+    try {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${aiModel}:generateContent?key=${apiKey}`;
+      const response = await fetchWithRetry(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
+      });
+      setActivitySummary(
+        response.candidates?.[0]?.content?.parts?.[0]?.text ||
+          "No hay resumen disponible."
+      );
+    } catch (e) {
+      setActivitySummary("Error: " + e.message);
+    } finally {
+      setIsSummarizing(false);
+    }
   };
+
   const handleDraftReply = async (message) => {
-    /* IA Whatsapp intacta */
+    if (!apiKey) return alert("Falta configurar la clave API.");
+    setDraftingId(message.id);
+    const prompt = `Redacta una respuesta de WhatsApp muy corta y amable para este recado: "${message.content}"`;
+    try {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${aiModel}:generateContent?key=${apiKey}`;
+      const response = await fetchWithRetry(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
+      });
+      const draft = response.candidates?.[0]?.content?.parts?.[0]?.text;
+      const whatsappUrl = `https://wa.me/${message.phone.replace(
+        /\D/g,
+        ""
+      )}?text=${encodeURIComponent(draft.trim())}`;
+      window.open(whatsappUrl, "_blank");
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setDraftingId(null);
+    }
   };
 
   const speakResponse = (text, shouldEndCall = false) => {
     if ("speechSynthesis" in window) {
       window.speechSynthesis.cancel();
       const cleanText = text.replace(/\[.*?\]/g, "").trim();
+
       if (!cleanText) {
         isProcessingRef.current = false;
         if (isFluidModeRef.current && !shouldEndCall) {
@@ -402,19 +508,26 @@ export default function App() {
         }
         return;
       }
+
       const utterance = new SpeechSynthesisUtterance(cleanText);
       utterance.lang = "es-ES";
       const voices = window.speechSynthesis.getVoices();
       let bestVoice = voices.find(
         (v) =>
           (v.lang.startsWith("es-") || v.lang === "es") &&
-          (v.name.includes("Premium") || v.name.includes("Natural"))
+          (v.name.includes("Premium") ||
+            v.name.includes("Enhanced") ||
+            v.name.includes("Google") ||
+            v.name.includes("Siri") ||
+            v.name.includes("Natural"))
       );
       if (!bestVoice)
         bestVoice = voices.find(
           (v) => v.lang.startsWith("es-") || v.lang === "es"
         );
       if (bestVoice) utterance.voice = bestVoice;
+      utterance.rate = 1.0;
+      utterance.pitch = 1.0;
       isSpeakingRef.current = true;
       utterance.onend = () => {
         isSpeakingRef.current = false;
@@ -445,12 +558,18 @@ export default function App() {
           isFluidModeRef.current &&
           !isProcessingRef.current &&
           !isSpeakingRef.current
-        )
+        ) {
           setTimeout(() => {
-            try {
-              recognitionRef.current.start();
-            } catch (e) {}
+            if (
+              isFluidModeRef.current &&
+              !isProcessingRef.current &&
+              !isSpeakingRef.current
+            )
+              try {
+                recognitionRef.current.start();
+              } catch (e) {}
           }, 300);
+        }
       };
       recognitionRef.current.onresult = (event) => {
         const transcript = event.results[0][0].transcript;
@@ -477,8 +596,10 @@ export default function App() {
     if (isFluidModeRef.current) {
       stopFluidMode();
     } else {
-      if ("speechSynthesis" in window)
-        window.speechSynthesis.speak(new SpeechSynthesisUtterance(""));
+      if ("speechSynthesis" in window) {
+        const unlock = new SpeechSynthesisUtterance("");
+        window.speechSynthesis.speak(unlock);
+      }
       isFluidModeRef.current = true;
       setIsFluidMode(true);
       startListening();
@@ -491,19 +612,35 @@ export default function App() {
     document.body.style.position = "fixed";
     document.body.style.width = "100%";
     document.body.style.height = "100%";
+    let meta = document.querySelector('meta[name="viewport"]');
+    if (!meta) {
+      meta = document.createElement("meta");
+      meta.name = "viewport";
+      document.head.appendChild(meta);
+    }
+    meta.content =
+      "width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no";
+    const style = document.createElement("style");
+    style.innerHTML = `* { touch-action: pan-y; -webkit-tap-highlight-color: transparent; } input, textarea, select { font-size: 16px !important; } .scrollbar-hide::-webkit-scrollbar { display: none; } .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }`;
+    document.head.appendChild(style);
     return () => {
       document.body.style.overflow = "auto";
       document.body.style.position = "static";
+      document.head.removeChild(style);
     };
   }, []);
 
   const handleSimulateVisitor = async (textOverride) => {
     const textToSend = textOverride || chatInput;
     if (!textToSend.trim() || isTyping) return;
+
     if (!apiKey) {
       setChatHistory((prev) => [
         ...prev,
-        { role: "ai", content: "⚠️ Falla API." },
+        {
+          role: "ai",
+          content: "⚠️ Sistema: No se detecta la clave API de Gemini.",
+        },
       ]);
       setIsTyping(false);
       isProcessingRef.current = false;
@@ -517,7 +654,36 @@ export default function App() {
     setIsTyping(true);
 
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${aiModel}:generateContent?key=${apiKey}`;
-    const systemPrompt = `Eres el Conserje Inteligente de MicroSmart. REGLAS: 1. Privacidad. 2. Naturalidad. 3. Protocolo de salida con etiquetas: [ABRIR_PUERTA | Empresa | Destinatario], [MENSAJE_PARA | Desconocido | texto], [ACCESO_DENEGADO | Motivo], [FIN_CONVERSACION].`;
+
+    const systemPrompt = `Eres el Conserje Inteligente desarrollado por la empresa MicroSmart.
+IMPORTANTE SOBRE TU IDENTIDAD: MicroSmart es una empresa tecnológica líder en domótica y sistemas autónomos.
+Tú eres uno de sus productos, instalado para proteger esta vivienda privada. La casa NO se llama MicroSmart.
+Si te preguntan quién o qué eres, responde con naturalidad que eres el sistema inteligente creado por MicroSmart.
+
+REGLA 1 - PRIVACIDAD INNEGOCIABLE (MODO CAJA FUERTE):
+NUNCA, bajo ningún concepto, reveles ni confirmes el apellido o nombre de un residente si el visitante no lo ha dicho de forma exacta primero.
+- MAL: "¿Busca a Jorge Loaiza?".
+- BIEN: "Entendido, ¿me podría indicar el apellido para confirmar?"
+
+REGLA 2 - MODO CAMALEÓN Y NATURALIDAD (CERO ROBOT):
+- Usa muletillas humanas al inicio de tus frases: "Vale", "Entiendo", "A ver...", "De acuerdo", "Perfecto", "Un segundo".
+- NO repitas "por favor" o "gracias" en cada frase. Úsalas esporádicamente para que suene natural.
+- Si el visitante tiene prisa (ej. "¡Amazon!", "Paquete"): Sé rápido y directo. Si está tranquilo, sé cálido.
+
+REGLA 3 - INTELIGENCIA Y LÓGICA:
+Si el visitante dice un nombre y al menos UN apellido correcto de la lista, dale el acceso por válido.
+
+PROTOCOLOS ESTRICTOS DE SALIDA (Usa SIEMPRE las etiquetas al final de tu respuesta):
+- REPARTIDORES: Cuando verifiques nombre y apellido, dales acceso.
+SIEMPRE debes pedirles dos cosas: 1) Que dejen el paquete en un lugar seguro dentro y 2) Que se aseguren de cerrar bien la puerta al salir. Usa tus propias palabras cada vez.
+-> [ABRIR_PUERTA | Empresa | Destinatario]
+- VISITA VERIFICADA: "Adelante, puede pasar." -> [ABRIR_PUERTA | Visita | Nombre]
+- NO AUTORIZADO: "Lo siento, sin el nombre completo no puedo abrir. Si quiere déjeme un recado y yo se lo paso."
+-> [MENSAJE_PARA | Desconocido | texto]
+- RECHAZO DIRECTO: [ACCESO_DENEGADO | Motivo]
+
+REGLA DE AUTO-COLGADO:
+Añade la etiqueta [FIN_CONVERSACION] ÚNICAMENTE cuando la conversación termine de forma natural.`;
 
     let validApiHistory = [...apiHistoryRef.current];
     let combinedText = textToSend;
@@ -525,12 +691,11 @@ export default function App() {
       validApiHistory.length > 0 &&
       validApiHistory[validApiHistory.length - 1].role === "user"
     ) {
-      combinedText = validApiHistory.pop().parts[0].text + ". " + textToSend;
+      const lastMsg = validApiHistory.pop();
+      combinedText = lastMsg.parts[0].text + ". " + textToSend;
     }
-    const contents = [
-      ...validApiHistory,
-      { role: "user", parts: [{ text: combinedText }] },
-    ];
+    const newApiMsg = { role: "user", parts: [{ text: combinedText }] };
+    const contents = [...validApiHistory, newApiMsg];
 
     try {
       const data = await fetchWithRetry(url, {
@@ -543,6 +708,7 @@ export default function App() {
         }),
       });
       let aiText = data.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (!aiText) throw new Error("Respuesta vacía del servidor.");
 
       const updatedHistory = [
         ...contents,
@@ -555,15 +721,25 @@ export default function App() {
         endConversation = false;
       const finalAiText = aiText.replace(/\[.*?\]/g, "").trim();
 
-      if (aiText.match(/\[ABRIR_PUERTA\s*\|\s*(.*?)\s*\|\s*(.*?)\]/)) {
+      const abrirMatch = aiText.match(
+        /\[ABRIR_PUERTA\s*\|\s*(.*?)\s*\|\s*(.*?)\]/
+      );
+      if (abrirMatch) {
         actionType = "opened";
-        if (currentUser)
-          set(ref(db, "puerta"), "ABRIR").catch((e) => console.error(e));
+        const empresa = abrirMatch[1].trim();
+        const destinatario = abrirMatch[2].trim();
+
+        if (currentUser) {
+          set(ref(db, `users/${currentUser.uid}/puerta/estado`), "ABRIR").catch(
+            (e) => console.error(e)
+          );
+        }
+
         saveToHistory({
           id: Date.now(),
           type: "ai_open",
-          title: `Acceso Concedido`,
-          desc: `Autorizado por IA`,
+          title: `Acceso IA: ${empresa}`,
+          desc: `Para: ${destinatario}`,
           time: getCurrentTime(),
           date: "Hoy",
         });
@@ -574,34 +750,46 @@ export default function App() {
       );
       if (mensajeMatch) {
         actionType = "message_saved";
+        const destinatario = mensajeMatch[1].trim();
+        const textoMensaje = mensajeMatch[2].trim();
+
         saveMessage({
           id: Date.now(),
-          recipient: mensajeMatch[1].trim(),
-          content: mensajeMatch[2].trim(),
+          recipient: destinatario,
+          content: textoMensaje,
           time: getCurrentTime(),
-          phone: "Desconocido",
+          phone:
+            authorizedNamesRef.current.find(
+              (p) =>
+                p.name === destinatario ||
+                p.name.includes(destinatario.split(" ")[0])
+            )?.phone || "Desconocido",
         });
+
         saveToHistory({
           id: Date.now() + 1,
           type: "ai_message",
           title: `Recado guardado`,
-          desc: `Para: ${mensajeMatch[1].trim()}`,
+          desc: `Para: ${destinatario}`,
           time: getCurrentTime(),
           date: "Hoy",
         });
       }
 
-      if (aiText.match(/\[ACCESO_DENEGADO\s*\|\s*(.*?)\]/)) {
+      const rechazoMatch = aiText.match(/\[ACCESO_DENEGADO\s*\|\s*(.*?)\]/);
+      if (rechazoMatch) {
         actionType = "denied";
+        const motivo = rechazoMatch[1].trim();
         saveToHistory({
           id: Date.now(),
           type: "ai_denied",
           title: `Acceso Denegado`,
-          desc: "Rechazado por IA",
+          desc: motivo,
           time: getCurrentTime(),
           date: "Hoy",
         });
       }
+
       if (aiText.includes("[FIN_CONVERSACION]")) endConversation = true;
 
       setChatHistory((prev) => [
@@ -613,7 +801,7 @@ export default function App() {
     } catch (error) {
       setChatHistory((prev) => [
         ...prev,
-        { role: "ai", content: `⚠️ Error de red.` },
+        { role: "ai", content: `⚠️ Error de red. Intente de nuevo.` },
       ]);
       isProcessingRef.current = false;
       if (isFluidModeRef.current)
@@ -630,11 +818,16 @@ export default function App() {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [chatHistory, isTyping]);
 
+  // =================================================================================
+  // PANTALLA 1: LOGIN REAL CON FIREBASE AUTH (Logos 30% más grandes)
+  // =================================================================================
   if (!currentUser) {
     return (
       <div className="fixed inset-0 bg-[#f3f4f6] flex items-center justify-center font-sans p-4">
         <div className="w-full max-w-md bg-white rounded-[3rem] p-8 shadow-2xl flex flex-col items-center">
+          {/* LOGO 30% MÁS GRANDE (h-32) */}
           <MicroSmartLogo className="h-32 mb-8 scale-110" />
+
           <h2 className="text-2xl font-black text-slate-800 mb-2">
             {authMode === "login"
               ? "Bienvenido a casa"
@@ -643,7 +836,11 @@ export default function App() {
               : "Recuperar acceso"}
           </h2>
           <p className="text-slate-500 text-sm mb-6 text-center font-medium">
-            Inicia sesión para gestionar tu hogar MicroSmart
+            {authMode === "login"
+              ? "Inicia sesión para gestionar tu hogar MicroSmart"
+              : authMode === "register"
+              ? "Regístrate para vincular tus dispositivos"
+              : "Te enviaremos un enlace para restaurar tu contraseña"}
           </p>
 
           {authError && (
@@ -672,6 +869,7 @@ export default function App() {
                 className="w-full bg-slate-50 border border-slate-200 rounded-2xl pl-12 pr-5 py-4 focus:outline-none focus:ring-2 focus:ring-[#00479b] text-slate-800 font-medium"
               />
             </div>
+
             {authMode !== "reset" && (
               <div className="relative">
                 <Key
@@ -689,6 +887,7 @@ export default function App() {
                 />
               </div>
             )}
+
             <button
               type="submit"
               disabled={authLoading}
@@ -752,6 +951,9 @@ export default function App() {
     );
   }
 
+  // =================================================================================
+  // PANTALLA 2: APLICACIÓN PRINCIPAL (Aislada por usuario)
+  // =================================================================================
   return (
     <div className="fixed inset-0 w-screen h-[100dvh] bg-[#f3f4f6] flex items-center justify-center font-sans text-slate-900 overflow-hidden">
       {/* MODAL WIFI BLUETOOTH INVISIBLE */}
@@ -812,6 +1014,7 @@ export default function App() {
       <div className="w-full max-w-md h-full md:h-[92vh] md:max-h-[850px] md:rounded-[3rem] bg-white shadow-[0_20px_50px_rgba(0,0,0,0.1)] overflow-hidden flex flex-col relative md:border-[10px] border-[#1e293b]">
         <div className="bg-white px-6 pt-8 pb-3 flex flex-col z-10 border-b border-slate-50 shrink-0">
           <div className="flex justify-between items-center mb-3">
+            {/* LOGO 30% MÁS GRANDE AQUÍ TAMBIÉN (h-[110px]) */}
             <MicroSmartLogo className="h-[110px] w-auto flex items-center" />
             <div className="flex space-x-1">
               <button
@@ -944,7 +1147,7 @@ export default function App() {
                       : "bg-slate-100 text-slate-500"
                   } text-[8px] font-black rounded-full`}
                 >
-                  {isFluidMode ? "DESPIERTO" : "DORMIDO"}
+                  {isFluidMode ? "CONSERJE DESPIERTO" : "MODO DORMIDO"}
                 </div>
               </div>
               <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
@@ -1005,62 +1208,179 @@ export default function App() {
                       <MicOff size={32} className="text-slate-400" />
                     )}
                   </button>
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">
+                    {isFluidMode
+                      ? isListening
+                        ? "Escuchando..."
+                        : "Pensando..."
+                      : "Toca el micro para despertar"}
+                  </p>
                 </div>
               </div>
             </div>
           )}
 
           {activeTab === "history" && (
-            <div className="py-4">
-              {" "}
-              <h2 className="text-xl font-black text-slate-800 tracking-tight mb-6">
-                Registro
-              </h2>{" "}
-              <div className="space-y-3">
-                {historyLog.map((log, i) => (
-                  <div
-                    key={i}
-                    className="bg-white p-4 rounded-3xl shadow-sm border border-slate-100 flex items-center space-x-3"
+            <div className="animate-in fade-in slide-in-from-right-4 duration-500 py-4">
+              <div className="flex justify-between items-center mb-6">
+                <h2 className="text-xl font-black text-slate-800 tracking-tight">
+                  Registro
+                </h2>
+                <button
+                  onClick={handleSummarizeActivity}
+                  disabled={isSummarizing || historyLog.length === 0}
+                  className={`flex items-center space-x-1 px-3 py-1.5 rounded-full text-[10px] font-bold shadow-lg transition-all ${
+                    historyLog.length === 0
+                      ? "bg-slate-200 text-slate-400 shadow-none"
+                      : "bg-[#00479b] text-white shadow-blue-900/20 active:scale-95"
+                  }`}
+                >
+                  {isSummarizing ? (
+                    <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                  ) : (
+                    <Sparkles size={12} />
+                  )}
+                  <span>✨ RESUMIR</span>
+                </button>
+              </div>
+              {activitySummary && (
+                <div className="mb-6 bg-blue-50 p-4 rounded-3xl border border-blue-100 animate-in slide-in-from-top-2">
+                  <h4 className="text-[10px] font-black text-[#00479b] mb-1 uppercase tracking-widest flex items-center">
+                    <FileText size={12} className="mr-1" /> Resumen IA
+                  </h4>
+                  <p className="text-xs text-slate-700 leading-relaxed font-medium">
+                    {activitySummary}
+                  </p>
+                  <button
+                    onClick={() => setActivitySummary("")}
+                    className="mt-2 text-[9px] font-bold text-slate-400 hover:text-slate-600 underline"
                   >
-                    <div className="flex-1">
-                      <h4 className="font-bold text-slate-800 text-xs mb-1">
-                        {log.title}
-                      </h4>
-                      <p className="text-[10px] text-slate-500 truncate">
-                        {log.desc}
-                      </p>
-                    </div>
-                    <div className="text-right shrink-0">
-                      <span className="text-[10px] font-black text-slate-700 block">
-                        {log.time}
-                      </span>
-                    </div>
+                    Cerrar resumen
+                  </button>
+                </div>
+              )}
+              <div className="space-y-3">
+                {historyLog.length === 0 ? (
+                  <div className="text-center py-10">
+                    <p className="text-slate-400 font-bold text-xs">
+                      Aún no hay actividad hoy
+                    </p>
                   </div>
-                ))}
+                ) : (
+                  historyLog.map((log, i) => (
+                    <div
+                      key={i}
+                      className="bg-white p-4 rounded-3xl shadow-sm border border-slate-100 flex items-center space-x-3"
+                    >
+                      <div
+                        className={`p-2.5 rounded-xl ${
+                          log.type === "ai_open"
+                            ? "bg-green-100 text-[#7bc100]"
+                            : log.type === "ai_denied"
+                            ? "bg-red-100 text-red-500"
+                            : log.type === "ai_message"
+                            ? "bg-amber-100 text-amber-500"
+                            : "bg-blue-100 text-[#00479b]"
+                        }`}
+                      >
+                        {log.type === "ai_open" ? (
+                          <Package size={18} />
+                        ) : log.type === "ai_denied" ? (
+                          <ShieldAlert size={18} />
+                        ) : log.type === "ai_message" ? (
+                          <MessageSquare size={18} />
+                        ) : (
+                          <User size={18} />
+                        )}
+                      </div>
+                      <div className="flex-1">
+                        <h4 className="font-bold text-slate-800 text-xs mb-1">
+                          {log.title}
+                        </h4>
+                        <p className="text-[10px] text-slate-500 truncate">
+                          {log.desc}
+                        </p>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <span className="text-[10px] font-black text-slate-700 block">
+                          {log.time}
+                        </span>
+                      </div>
+                    </div>
+                  ))
+                )}
               </div>
             </div>
           )}
 
           {activeTab === "messages" && (
-            <div className="py-4">
-              {" "}
+            <div className="animate-in fade-in slide-in-from-right-4 duration-500 py-4">
               <h2 className="text-xl font-black text-slate-800 mb-6 tracking-tight">
                 Recados
-              </h2>{" "}
+              </h2>
               <div className="space-y-4">
-                {messagesList.map((msg, i) => (
-                  <div
-                    key={i}
-                    className="bg-white p-5 rounded-3xl shadow-md border-l-4 border-l-[#7bc100]"
-                  >
-                    <h4 className="font-black text-slate-800 text-sm mb-2">
-                      {msg.recipient}
-                    </h4>
-                    <p className="text-xs text-slate-600 mb-4 italic">
-                      "{msg.content}"
+                {messagesList.length === 0 ? (
+                  <div className="text-center py-16 bg-slate-50 rounded-[2.5rem] border-2 border-dashed border-slate-200">
+                    <MessageSquare
+                      size={40}
+                      className="text-slate-300 mx-auto mb-3"
+                    />
+                    <p className="text-slate-400 font-bold text-xs">
+                      Sin mensajes pendientes
                     </p>
                   </div>
-                ))}
+                ) : (
+                  messagesList.map((msg, i) => (
+                    <div
+                      key={i}
+                      className="bg-white p-5 rounded-3xl shadow-md border-l-4 border-l-[#7bc100]"
+                    >
+                      <div className="flex justify-between items-start mb-2">
+                        <div>
+                          <span className="text-[8px] font-black text-[#00479b] tracking-tighter uppercase">
+                            PARA
+                          </span>
+                          <h4 className="font-black text-slate-800 text-sm">
+                            {msg.recipient}
+                          </h4>
+                        </div>
+                        <span className="text-[9px] font-bold text-slate-400">
+                          {msg.time}
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-600 mb-4 font-medium italic">
+                        "{msg.content}"
+                      </p>
+                      <div className="flex space-x-2">
+                        <button
+                          onClick={() => handleDraftReply(msg)}
+                          disabled={draftingId === msg.id}
+                          className="flex-1 flex items-center justify-center bg-slate-800 text-white py-2.5 rounded-xl text-[10px] font-black transition-all shadow-lg active:scale-95"
+                        >
+                          {draftingId === msg.id ? (
+                            <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                          ) : (
+                            <Wand2 size={14} className="mr-2" />
+                          )}
+                          ✨ REDACTAR
+                        </button>
+                        <a
+                          href={`https://wa.me/${msg.phone.replace(
+                            /\D/g,
+                            ""
+                          )}?text=${encodeURIComponent(
+                            `Hola ${msg.recipient}, el Conserje MicroSmart tomó este recado para ti:\n\n"${msg.content}"`
+                          )}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="p-2.5 bg-[#25d366] text-white rounded-xl shadow-lg active:scale-95"
+                        >
+                          <PhoneForwarded size={16} />
+                        </a>
+                      </div>
+                    </div>
+                  ))
+                )}
               </div>
             </div>
           )}
@@ -1071,6 +1391,7 @@ export default function App() {
                 Configuración
               </h2>
 
+              {/* --- MÓDULO IOT: VINCULAR DISPOSITIVOS (AHORA PERSISTENTE) --- */}
               <div className="bg-gradient-to-br from-slate-800 to-slate-900 rounded-3xl p-5 shadow-lg">
                 <div className="flex items-center space-x-3 text-white mb-4">
                   <Smartphone size={18} className="text-[#7bc100]" />
@@ -1113,6 +1434,7 @@ export default function App() {
                 </button>
               </div>
 
+              {/* --- MÓDULO USUARIOS AUTORIZADOS --- */}
               <div className="bg-white rounded-3xl p-5 shadow-sm border border-slate-100">
                 <div className="flex items-center space-x-3 mb-4">
                   <UserPlus size={18} className="text-[#00479b]" />
@@ -1130,10 +1452,13 @@ export default function App() {
                         <span className="text-xs font-bold text-slate-700 block truncate">
                           {person.name}
                         </span>
+                        <span className="text-[9px] text-slate-400 font-bold">
+                          {person.phone}
+                        </span>
                       </div>
                       <button
                         onClick={() => handleRemoveName(person.name)}
-                        className="text-red-400 p-2"
+                        className="text-red-400 p-2 hover:bg-red-50 rounded-lg"
                       >
                         <X size={16} />
                       </button>
@@ -1146,19 +1471,24 @@ export default function App() {
                     value={newName}
                     onChange={(e) => setNewName(e.target.value)}
                     placeholder="Nombre completo"
-                    className="w-full bg-slate-50 border border-slate-200 text-base rounded-lg px-3 py-2.5 outline-none"
+                    className="w-full bg-slate-50 border border-slate-200 text-base text-slate-800 rounded-lg px-3 py-2.5 focus:outline-none"
                   />
                   <div className="flex space-x-2">
-                    <input
-                      type="tel"
-                      value={newPhone}
-                      onChange={(e) => setNewPhone(e.target.value)}
-                      placeholder="Teléfono"
-                      className="flex-1 bg-slate-50 border border-slate-200 text-base rounded-lg px-3 py-2.5 outline-none"
-                    />
+                    <div className="flex-1 bg-slate-50 border border-slate-200 rounded-lg flex items-center px-3">
+                      <span className="text-slate-400 text-sm font-bold pr-2 mr-2 border-r border-slate-200">
+                        +34
+                      </span>
+                      <input
+                        type="tel"
+                        value={newPhone}
+                        onChange={(e) => setNewPhone(e.target.value)}
+                        placeholder="Teléfono"
+                        className="bg-transparent text-base text-slate-800 w-full py-2.5 focus:outline-none"
+                      />
+                    </div>
                     <button
                       onClick={handleAddName}
-                      className="bg-[#00479b] text-white px-4 rounded-lg text-xs font-bold"
+                      className="bg-[#00479b] text-white px-4 rounded-lg text-xs font-bold shadow-lg shadow-blue-900/20 active:scale-95 transition-all"
                     >
                       OK
                     </button>
@@ -1169,6 +1499,7 @@ export default function App() {
           )}
         </div>
 
+        {/* NAVEGACIÓN INFERIOR */}
         <div className="absolute bottom-4 left-1/2 -translate-x-1/2 w-[92%] bg-white/95 backdrop-blur-xl border border-white/50 px-2 py-2 flex justify-between items-center z-20 rounded-[2rem] shadow-2xl">
           <NavItem
             active={activeTab === "home"}
