@@ -26,7 +26,7 @@ import {
   Volume2,
   Wand2,
   FileText,
-  CheckCircle2, // Importado para la animación de ABIERTO
+  CheckCircle2,
 } from "lucide-react";
 
 const fetchWithRetry = async (url, options, retries = 2, delay = 1000) => {
@@ -113,7 +113,7 @@ export default function App() {
   const isProcessingRef = useRef(false);
   const isSpeakingRef = useRef(false);
   const recognitionRef = useRef(null);
-  const silenceTimerRef = useRef(null); // Temporizador de silencio
+  const silenceTimerRef = useRef(null);
   const apiHistoryRef = useRef([]);
   const authorizedNamesRef = useRef(authorizedNames);
   const chatEndRef = useRef(null);
@@ -121,8 +121,7 @@ export default function App() {
   const [chatHistory, setChatHistory] = useState([
     {
       role: "ai",
-      content:
-        "Hola, soy el conserje automático de MicroSmart. ¿En qué le puedo ayudar?",
+      content: "Hola, soy el conserje de MicroSmart. ¿En qué le puedo ayudar?",
     },
   ]);
   const [apiHistory, setApiHistory] = useState([]);
@@ -156,7 +155,7 @@ export default function App() {
           !isSpeakingRef.current
         ) {
           speakResponse(
-            "Parece que no hay nadie en la línea. Me retiro, que tenga un excelente día.",
+            "Parece que no hay nadie. Me retiro, que tenga un excelente día.",
             true
           );
           setChatHistory((prev) => [
@@ -168,7 +167,7 @@ export default function App() {
             },
           ]);
         }
-      }, 15000); // 15 segundos sin hablar
+      }, 15000);
     }
   };
 
@@ -236,7 +235,6 @@ export default function App() {
     }
   };
 
-  // Se añade el parámetro shouldEndCall para colgar después de hablar
   const speakResponse = (text, shouldEndCall = false) => {
     if ("speechSynthesis" in window) {
       window.speechSynthesis.cancel();
@@ -278,7 +276,7 @@ export default function App() {
       utterance.onend = () => {
         isSpeakingRef.current = false;
         if (shouldEndCall) {
-          stopFluidMode(); // Cuelga si la conversación terminó
+          stopFluidMode();
         } else if (isFluidModeRef.current) {
           setTimeout(() => {
             startListening();
@@ -349,7 +347,7 @@ export default function App() {
       isFluidModeRef.current = true;
       setIsFluidMode(true);
       startListening();
-      resetSilenceTimer(); // Iniciar temporizador
+      resetSilenceTimer();
     }
   };
 
@@ -400,10 +398,9 @@ export default function App() {
     );
   };
 
-  // --- ORDEN FÍSICA VÍA FIREBASE (CON TUS ANIMACIONES RESTAURADAS) ---
   const handleOpenDoor = async () => {
     if (doorStatus !== "idle") return;
-    setDoorStatus("opening"); // Estado 1: PROCESANDO AZUL
+    setDoorStatus("opening");
 
     try {
       if (firebaseUrl) {
@@ -414,7 +411,7 @@ export default function App() {
         });
       }
 
-      setDoorStatus("opened"); // Estado 2: ABIERTO CON CHECK VERDE
+      setDoorStatus("opened");
       setHistoryLog((prev) => [
         {
           id: Date.now(),
@@ -433,7 +430,7 @@ export default function App() {
       );
       setDoorStatus("idle");
     } finally {
-      setTimeout(() => setDoorStatus("idle"), 2500); // Retorno a ABRIR VERDE
+      setTimeout(() => setDoorStatus("idle"), 2500);
     }
   };
 
@@ -463,35 +460,35 @@ export default function App() {
         ? authorizedNamesRef.current.map((p) => p.name).join(", ")
         : "Nadie";
 
-    // CEREBRO MEJORADO: PRIVACIDAD Y LÓGICA
-    const systemPrompt = `Eres el CONSERJE INTELIGENTE de la vivienda MicroSmart. Tu objetivo es gestionar las visitas con RAZONAMIENTO LÓGICO, SEGURIDAD y AMABILIDAD EXTREMA.
+    // --- CEREBRO DEFINITIVO: ADAPTATIVO, SEGURO Y NATURAL ---
+    const systemPrompt = `Eres el CONSERJE INTELIGENTE de la vivienda MicroSmart. Eres una IA autónoma, con sentido común, adaptativa y muy natural.
 
-REGLAS ESTRICTAS DE PRIVACIDAD (¡CRÍTICO!):
-1. NUNCA reveles el apellido o el nombre completo de un propietario si el visitante no lo ha dicho primero. 
-   - CORRECTO: Visitante: "Busco a Jorge". Tú: "Entendido, ¿podría indicarme su apellido, por favor?"
-   - INCORRECTO: Visitante: "Busco a Jorge". Tú: "¿Busca a Jorge Loaiza?". (¡ESTO ESTÁ TOTALMENTE PROHIBIDO!).
-2. NUNCA confirmes quién vive allí hasta que el visitante acierte nombre y apellido.
+REGLA 1 - PRIVACIDAD INNEGOCIABLE (MODO CAJA FUERTE):
+NUNCA, bajo ningún concepto, reveles ni confirmes el apellido o nombre de un residente si el visitante no lo ha dicho de forma exacta primero.
+- MAL: "¿Busca a Jorge Loaiza?".
+- BIEN: "Entiendo, ¿me podría indicar el apellido para confirmar?"
+- Si preguntan "¿Vive aquí la familia X?", di: "Por seguridad, indíqueme a quién busca exactamente".
 
-INSTRUCCIONES DE COMPORTAMIENTO:
-3. ANÁLISIS DE INTENCIÓN Y LÓGICA: No seas un robot rígido. Si dicen "Para Karla León" y tu lista dice "Karla León Núñez", usa la lógica para saber que es la misma persona.
-4. AMABILIDAD Y MODALES: Ve directo al grano para no hacerles perder tiempo, pero saluda siempre al iniciar ("Hola") y despídete ("Gracias, hasta luego").
-5. PROTOCOLO DE PAQUETES: Si verificas empresa y destinatario (nombre + al menos 1 apellido de la lista), di EXACTAMENTE: "Puede pasar. Deje el paquete dentro y cierre. Gracias. Hasta luego."
-6. RECHAZO: Si vas a denegar el paso o no están autorizados, ofréceles amablemente guardar un recado.
+REGLA 2 - MODO CAMALEÓN (ADAPTABILIDAD AL TONO):
+- Si el visitante tiene prisa (ej. "¡Amazon!", "Traigo un paquete"): Sé rápido, ejecutivo y directo. No des rodeos.
+- Si el visitante es tranquilo (ej. "Hola, buenas tardes"): Sé cálido, hospitalario y amable.
 
-LISTA DE PROPIETARIOS AUTORIZADOS: [${allowedNamesList}].
+REGLA 3 - NATURALIDAD Y MULETILLAS (CERO ROBOT):
+- Usa muletillas humanas al inicio de tus frases: "Vale", "Entiendo", "A ver...", "De acuerdo", "Perfecto", "Un segundo".
+- NO repitas "por favor" o "gracias" en cada frase. Úsalas esporádicamente para que suene natural.
+- No repitas mecánicamente lo que dice el usuario. Reacciona.
 
-ETIQUETAS SECRETAS (Añade una al final según corresponda):
-A. REPARTIDOR VERIFICADO: [ABRIR_PUERTA | Empresa | Destinatario]
-B. VISITA VERIFICADA (ofrece recado rápido): [MENSAJE_PARA | NombreAutorizado | texto]
-C. RECHAZO DEFINITIVO: [ACCESO_DENEGADO | Motivo]
+REGLA 4 - INTELIGENCIA Y FLEXIBILIDAD:
+Si el visitante dice un nombre y al menos UN apellido correcto de la lista, dale el acceso por válido. (Ej: Si la lista es "Karla León Núñez" y dicen "Para Karla Núñez", usa la lógica, es correcto).
 
-¡REGLA DE COLGAR LA LLAMADA! (MUY IMPORTANTE):
-Añade la etiqueta [FIN_CONVERSACION] ÚNICAMENTE cuando la conversación termine de forma natural:
-- Ya le has dado permiso para entrar (al repartidor).
-- Ya has guardado el recado y te despides.
-- El visitante se despide explícitamente.
-- El visitante falla 3 veces seguidas con el nombre.
-NUNCA uses [FIN_CONVERSACION] a la primera equivocación.`;
+PROTOCOLOS ESTRICTOS DE SALIDA (Usa las etiquetas):
+- REPARTIDORES: Cuando verifiques nombre y apellido, di EXACTAMENTE ESTA FRASE: "Perfecto, puede pasar. Deje el paquete dentro y asegúrese de cerrar bien la puerta al salir. Gracias, hasta luego." -> Añade la etiqueta: [ABRIR_PUERTA | Empresa | Destinatario]
+- VISITA VERIFICADA: "Adelante, puede pasar." -> [ABRIR_PUERTA | Visita | Nombre]
+- NO AUTORIZADO / NO SABE EL NOMBRE: "Lo siento, sin el nombre completo no puedo abrir. Si quiere déjeme un recado y yo se lo paso." -> [MENSAJE_PARA | Desconocido | texto]
+- RECHAZO DIRECTO: [ACCESO_DENEGADO | Motivo]
+
+REGLA DE AUTO-COLGADO:
+Añade la etiqueta [FIN_CONVERSACION] ÚNICAMENTE cuando la conversación termine de forma natural (ya abriste la puerta al repartidor, ya tomaste el recado, o se han despedido).`;
 
     let validApiHistory = [...apiHistoryRef.current];
     let combinedText = textToSend;
@@ -512,7 +509,7 @@ NUNCA uses [FIN_CONVERSACION] a la primera equivocación.`;
         body: JSON.stringify({
           systemInstruction: { parts: [{ text: systemPrompt }] },
           contents: contents,
-          generationConfig: { temperature: 0.3 },
+          generationConfig: { temperature: 0.6 }, // Subimos a 0.6 para mayor creatividad y naturalidad en el lenguaje
         }),
       });
       let aiText = data.candidates?.[0]?.content?.parts?.[0]?.text;
@@ -537,7 +534,6 @@ NUNCA uses [FIN_CONVERSACION] a la primera equivocación.`;
         const empresa = abrirMatch[1].trim();
         const destinatario = abrirMatch[2].trim();
 
-        // --- LA IA MANDA LA ORDEN A FIREBASE ---
         if (firebaseUrl) {
           fetch(`${firebaseUrl}/puerta.json`, {
             method: "PUT",
@@ -550,8 +546,8 @@ NUNCA uses [FIN_CONVERSACION] a la primera equivocación.`;
           {
             id: Date.now(),
             type: "ai_open",
-            title: `Paquete: ${empresa}`,
-            desc: `Destinatario: ${destinatario}`,
+            title: `Acceso IA: ${empresa}`,
+            desc: `Para: ${destinatario}`,
             time: getCurrentTime(),
             date: "Hoy",
           },
@@ -619,13 +615,11 @@ NUNCA uses [FIN_CONVERSACION] a la primera equivocación.`;
       ]);
 
       isProcessingRef.current = false;
-
-      // Llamamos a la voz pasándole si debe colgar al terminar
       speakResponse(finalAiText, endConversation);
     } catch (error) {
       setChatHistory((prev) => [
         ...prev,
-        { role: "ai", content: `⚠️ Error: ${error.message}` },
+        { role: "ai", content: `⚠️ Error de red. Intente de nuevo.` },
       ]);
       isProcessingRef.current = false;
       if (isFluidModeRef.current)
@@ -689,7 +683,6 @@ NUNCA uses [FIN_CONVERSACION] a la primera equivocación.`;
                 <span>SISTEMA ONLINE</span>
               </div>
 
-              {/* BOTÓN CON ANIMACIONES RESTAURADAS */}
               <button
                 onClick={handleOpenDoor}
                 disabled={doorStatus !== "idle"}
