@@ -34,6 +34,7 @@ import {
   Key,
 } from "lucide-react";
 
+// --- IMPORTACIONES DE FIREBASE ---
 import { initializeApp } from "firebase/app";
 import {
   getAuth,
@@ -45,6 +46,8 @@ import {
 } from "firebase/auth";
 import { getDatabase, ref, set, push, onValue } from "firebase/database";
 
+// =========================================================================
+// ⚠️ AQUÍ VAN TUS CLAVES REALES DE FIREBASE
 const firebaseConfig = {
   apiKey: "AIzaSyAyQe2Ev40lMOx6_gNvMGv6P86oRrGlHvg",
   authDomain: "portero-a87d8.firebaseapp.com",
@@ -56,20 +59,26 @@ const firebaseConfig = {
   appId: "1:779001621682:web:ea0fed5bddc97e489dedab",
 };
 
+// Inicializar Firebase
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getDatabase(app);
+// =========================================================================
 
 const fetchWithRetry = async (url, options, retries = 2, delay = 1000) => {
   try {
     const res = await fetch(url, options);
     if (!res.ok) {
+      const errorData = await res.json().catch(() => null);
       if (res.status === 401)
         throw new Error("Error 401: Clave de API inválida.");
       if (res.status === 404)
         throw new Error("Error 404: El modelo de IA no se encuentra.");
-      if (res.status === 400 || res.status === 403 || res.status === 429)
-        throw new Error(`Error de Google (${res.status})`);
+      if (res.status === 400 || res.status === 403 || res.status === 429) {
+        throw new Error(
+          `Error de Google (${res.status}): Revisar clave API o cuota`
+        );
+      }
       throw new Error(`Error HTTP: ${res.status}`);
     }
     return await res.json();
@@ -77,7 +86,8 @@ const fetchWithRetry = async (url, options, retries = 2, delay = 1000) => {
     if (
       retries > 0 &&
       !error.message.includes("Error 401") &&
-      !error.message.includes("Error 404")
+      !error.message.includes("Error 404") &&
+      !error.message.includes("Error de Google")
     ) {
       await new Promise((r) => setTimeout(r, delay));
       return fetchWithRetry(url, options, retries - 1, delay * 2);
@@ -112,6 +122,7 @@ const getCurrentTime = () => {
 };
 
 export default function App() {
+  // --- ESTADOS DE SEGURIDAD Y REGISTRO ---
   const [currentUser, setCurrentUser] = useState(null);
   const [authMode, setAuthMode] = useState("login");
   const [email, setEmail] = useState("");
@@ -120,6 +131,7 @@ export default function App() {
   const [authMessage, setAuthMessage] = useState("");
   const [authLoading, setAuthLoading] = useState(false);
 
+  // --- ESTADOS PRINCIPALES DE LA APP ---
   const [activeTab, setActiveTab] = useState("home");
   const [doorStatus, setDoorStatus] = useState("idle");
   const [isPairing, setIsPairing] = useState(false);
@@ -132,11 +144,12 @@ export default function App() {
   const [chatInput, setChatInput] = useState("");
   const [isTyping, setIsTyping] = useState(false);
 
+  // --- ESTADOS NUEVOS PARA EL BLUETOOTH Y LA LISTA DE REDES ---
   const [wifiModalOpen, setWifiModalOpen] = useState(false);
   const [tempSsid, setTempSsid] = useState("");
   const [tempPass, setTempPass] = useState("");
   const [bleCharacteristic, setBleCharacteristic] = useState(null);
-  const [availableNetworks, setAvailableNetworks] = useState([]); // ESTADO NUEVO PARA LA LISTA DE REDES
+  const [availableNetworks, setAvailableNetworks] = useState([]);
 
   const [isListening, setIsListening] = useState(false);
   const [isFluidMode, setIsFluidMode] = useState(false);
@@ -165,6 +178,7 @@ export default function App() {
   const apiKey = process.env.REACT_APP_GEMINI_API_KEY;
   const aiModel = "gemini-2.5-flash";
 
+  // --- ESCUCHAR SI EL USUARIO ESTÁ LOGUEADO ---
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       setCurrentUser(user);
@@ -178,34 +192,51 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
+  // --- CARGAR DATOS ÚNICOS DEL USUARIO DESDE FIREBASE ---
   useEffect(() => {
     if (currentUser) {
       const uid = currentUser.uid;
-      onValue(ref(db, `users/${uid}/devices`), (s) =>
-        setPairedDevices(s.val() ? Object.values(s.val()) : [])
-      );
-      onValue(ref(db, `users/${uid}/authorizedNames`), (s) =>
-        setAuthorizedNames(s.val() ? Object.values(s.val()) : [])
-      );
-      onValue(ref(db, `users/${uid}/history`), (s) => {
-        const d = s.val();
-        setHistoryLog(
-          d
-            ? Object.keys(d)
-                .map((k) => ({ ...d[k], dbKey: k }))
-                .sort((a, b) => b.id - a.id)
-            : []
-        );
+
+      // Cargar Dispositivos del usuario
+      onValue(ref(db, `users/${uid}/devices`), (snapshot) => {
+        setPairedDevices(snapshot.val() ? Object.values(snapshot.val()) : []);
       });
-      onValue(ref(db, `users/${uid}/messages`), (s) => {
-        const d = s.val();
-        setMessagesList(
-          d
-            ? Object.keys(d)
-                .map((k) => ({ ...d[k], dbKey: k }))
-                .sort((a, b) => b.id - a.id)
-            : []
-        );
+
+      // Cargar Nombres Autorizados
+      onValue(ref(db, `users/${uid}/authorizedNames`), (snapshot) => {
+        setAuthorizedNames(snapshot.val() ? Object.values(snapshot.val()) : []);
+      });
+
+      // Cargar Historial
+      onValue(ref(db, `users/${uid}/history`), (snapshot) => {
+        const data = snapshot.val();
+        if (data) {
+          const loadedHistory = Object.keys(data)
+            .map((key) => ({
+              ...data[key],
+              dbKey: key,
+            }))
+            .sort((a, b) => b.id - a.id);
+          setHistoryLog(loadedHistory);
+        } else {
+          setHistoryLog([]);
+        }
+      });
+
+      // Cargar Recados (Mensajes)
+      onValue(ref(db, `users/${uid}/messages`), (snapshot) => {
+        const data = snapshot.val();
+        if (data) {
+          const loadedMessages = Object.keys(data)
+            .map((key) => ({
+              ...data[key],
+              dbKey: key,
+            }))
+            .sort((a, b) => b.id - a.id);
+          setMessagesList(loadedMessages);
+        } else {
+          setMessagesList([]);
+        }
       });
     }
   }, [currentUser]);
@@ -213,6 +244,7 @@ export default function App() {
   useEffect(() => {
     authorizedNamesRef.current = authorizedNames;
   }, [authorizedNames]);
+
   useEffect(() => {
     if ("speechSynthesis" in window) {
       window.speechSynthesis.getVoices();
@@ -221,15 +253,16 @@ export default function App() {
     }
   }, []);
 
+  // --- FUNCIONES DE AUTENTICACIÓN ---
   const handleAuth = async (e) => {
     e.preventDefault();
     setAuthError("");
     setAuthMessage("");
     setAuthLoading(true);
     try {
-      if (authMode === "login")
+      if (authMode === "login") {
         await signInWithEmailAndPassword(auth, email, password);
-      else if (authMode === "register") {
+      } else if (authMode === "register") {
         await createUserWithEmailAndPassword(auth, email, password);
         setAuthMessage("Cuenta creada con éxito.");
       } else if (authMode === "reset") {
@@ -244,24 +277,29 @@ export default function App() {
   };
 
   const handleLogout = () => signOut(auth);
+
+  // --- GUARDADO PERSISTENTE EN BASE DE DATOS ---
   const saveToHistory = async (newLog) => {
-    if (currentUser)
-      await push(ref(db, `users/${currentUser.uid}/history`), newLog);
-  };
-  const saveMessage = async (newMessage) => {
-    if (currentUser)
-      await push(ref(db, `users/${currentUser.uid}/messages`), newMessage);
+    if (!currentUser) return;
+    await push(ref(db, `users/${currentUser.uid}/history`), newLog);
   };
 
-  // --- LÓGICA BLUETOOTH CON ESCANEO ---
+  const saveMessage = async (newMessage) => {
+    if (!currentUser) return;
+    await push(ref(db, `users/${currentUser.uid}/messages`), newMessage);
+  };
+
+  // --- LÓGICA DE ESCANEO Y CONEXIÓN BLUETOOTH ---
   const iniciarConexionBluetooth = async () => {
     setIsPairing(true);
     try {
+      // 1. Pide permiso y escanea
       const device = await navigator.bluetooth.requestDevice({
         filters: [{ name: "MicroSmart_ESP32" }],
         optionalServices: ["19b10000-e8f2-537e-4f6c-d104768a1214"],
       });
 
+      // 2. Conecta
       const server = await device.gatt.connect();
       const service = await server.getPrimaryService(
         "19b10000-e8f2-537e-4f6c-d104768a1214"
@@ -272,25 +310,27 @@ export default function App() {
 
       setBleCharacteristic(characteristic);
 
-      // LEEMOS LA LISTA DE REDES QUE ESCANEÓ EL ESP32
+      // 3. Lee la lista de redes que escaneó el ESP32
       const val = await characteristic.readValue();
       const decoded = new TextDecoder().decode(val);
 
       if (decoded) {
-        // Separamos por comas y limpiamos duplicados o vacíos
+        // Limpiamos la lista y quitamos nombres vacíos o repetidos
         const networksArray = decoded.split(",").filter((n) => n.trim() !== "");
-        const uniqueNetworks = [...new Set(networksArray)]; // Quita nombres repetidos
+        const uniqueNetworks = [...new Set(networksArray)];
         setAvailableNetworks(uniqueNetworks);
 
-        // Seleccionamos la primera de la lista por defecto
-        if (uniqueNetworks.length > 0) setTempSsid(uniqueNetworks[0]);
+        // Seleccionamos la primera red para que no salga en blanco
+        if (uniqueNetworks.length > 0) {
+          setTempSsid(uniqueNetworks[0]);
+        }
       }
 
       setWifiModalOpen(true);
     } catch (error) {
       console.error(error);
       alert(
-        "No se pudo conectar. Verifica que el dispositivo MicroSmart esté encendido cerca de ti."
+        "No se pudo conectar. Verifica que el dispositivo MicroSmart esté encendido, cerca de ti, y con la memoria borrada."
       );
     } finally {
       setIsPairing(false);
@@ -299,6 +339,7 @@ export default function App() {
 
   const enviarDatosAlDispositivo = async () => {
     if (!bleCharacteristic || !tempSsid || !tempPass || !currentUser) return;
+
     try {
       const payload = `${tempSsid}||${tempPass}||${currentUser.uid}`;
       const encoder = new TextEncoder();
@@ -325,21 +366,28 @@ export default function App() {
       const formattedPhone = newPhone.startsWith("+")
         ? newPhone.trim()
         : `+34 ${newPhone.trim()}`;
-      await set(ref(db, `users/${currentUser.uid}/authorizedNames`), [
+      const updatedNames = [
         ...authorizedNames,
         { name: newName.trim(), phone: formattedPhone },
-      ]);
+      ];
+      await set(
+        ref(db, `users/${currentUser.uid}/authorizedNames`),
+        updatedNames
+      );
       setNewName("");
       setNewPhone("");
     }
   };
 
   const handleRemoveName = async (nameToRemove) => {
-    if (currentUser)
-      await set(
-        ref(db, `users/${currentUser.uid}/authorizedNames`),
-        authorizedNames.filter((p) => p.name !== nameToRemove)
-      );
+    if (!currentUser) return;
+    const updatedNames = authorizedNames.filter(
+      (person) => person.name !== nameToRemove
+    );
+    await set(
+      ref(db, `users/${currentUser.uid}/authorizedNames`),
+      updatedNames
+    );
   };
 
   const handleOpenDoor = async () => {
@@ -357,13 +405,14 @@ export default function App() {
         date: "Hoy",
       });
     } catch (error) {
-      alert("Error de conexión.");
+      alert("Error de conexión con la base de datos.");
       setDoorStatus("idle");
     } finally {
       setTimeout(() => setDoorStatus("idle"), 2500);
     }
   };
 
+  // --- LÓGICA DE IA Y VOZ (INTACTA) ---
   const resetSilenceTimer = () => {
     if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
     if (isFluidModeRef.current) {
@@ -401,19 +450,173 @@ export default function App() {
   };
 
   const handleSummarizeActivity = async () => {
-    /* IA Resumen - Intacta */
+    if (!apiKey) return setActivitySummary("Falta configurar la clave API.");
+    if (historyLog.length === 0)
+      return setActivitySummary(
+        "No hay actividad registrada hoy para resumir."
+      );
+    if (isSummarizing) return;
+    setIsSummarizing(true);
+    const activityData = historyLog
+      .map((log) => `${log.time}: ${log.title} - ${log.desc}`)
+      .join("\n");
+    const prompt = `Resume brevemente la actividad de hoy del portero de forma profesional: ${activityData}`;
+    try {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${aiModel}:generateContent?key=${apiKey}`;
+      const response = await fetchWithRetry(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
+      });
+      setActivitySummary(
+        response.candidates?.[0]?.content?.parts?.[0]?.text ||
+          "No hay resumen disponible."
+      );
+    } catch (e) {
+      setActivitySummary("Error: " + e.message);
+    } finally {
+      setIsSummarizing(false);
+    }
   };
+
   const handleDraftReply = async (message) => {
-    /* IA WhatsApp - Intacta */
+    if (!apiKey) return alert("Falta configurar la clave API.");
+    setDraftingId(message.id);
+    const prompt = `Redacta una respuesta de WhatsApp muy corta y amable para este recado: "${message.content}"`;
+    try {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${aiModel}:generateContent?key=${apiKey}`;
+      const response = await fetchWithRetry(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
+      });
+      const draft = response.candidates?.[0]?.content?.parts?.[0]?.text;
+      const whatsappUrl = `https://wa.me/${message.phone.replace(
+        /\D/g,
+        ""
+      )}?text=${encodeURIComponent(draft.trim())}`;
+      window.open(whatsappUrl, "_blank");
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setDraftingId(null);
+    }
   };
+
   const speakResponse = (text, shouldEndCall = false) => {
-    /* IA Voz - Intacta */
+    if ("speechSynthesis" in window) {
+      window.speechSynthesis.cancel();
+      const cleanText = text.replace(/\[.*?\]/g, "").trim();
+
+      if (!cleanText) {
+        isProcessingRef.current = false;
+        if (isFluidModeRef.current && !shouldEndCall) {
+          setTimeout(() => {
+            startListening();
+            resetSilenceTimer();
+          }, 300);
+        } else if (shouldEndCall) {
+          stopFluidMode();
+        }
+        return;
+      }
+
+      const utterance = new SpeechSynthesisUtterance(cleanText);
+      utterance.lang = "es-ES";
+      const voices = window.speechSynthesis.getVoices();
+      let bestVoice = voices.find(
+        (v) =>
+          (v.lang.startsWith("es-") || v.lang === "es") &&
+          (v.name.includes("Premium") ||
+            v.name.includes("Enhanced") ||
+            v.name.includes("Google") ||
+            v.name.includes("Siri") ||
+            v.name.includes("Natural"))
+      );
+      if (!bestVoice)
+        bestVoice = voices.find(
+          (v) => v.lang.startsWith("es-") || v.lang === "es"
+        );
+      if (bestVoice) utterance.voice = bestVoice;
+      utterance.rate = 1.0;
+      utterance.pitch = 1.0;
+      isSpeakingRef.current = true;
+      utterance.onend = () => {
+        isSpeakingRef.current = false;
+        if (shouldEndCall) {
+          stopFluidMode();
+        } else if (isFluidModeRef.current) {
+          setTimeout(() => {
+            startListening();
+            resetSilenceTimer();
+          }, 300);
+        }
+      };
+      window.speechSynthesis.speak(utterance);
+    }
   };
+
   const startListening = () => {
-    /* Reconocimiento de Voz - Intacta */
+    const SpeechRecognition =
+      window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) return;
+    if (!recognitionRef.current) {
+      recognitionRef.current = new SpeechRecognition();
+      recognitionRef.current.lang = "es-ES";
+      recognitionRef.current.onstart = () => setIsListening(true);
+      recognitionRef.current.onend = () => {
+        setIsListening(false);
+        if (
+          isFluidModeRef.current &&
+          !isProcessingRef.current &&
+          !isSpeakingRef.current
+        ) {
+          setTimeout(() => {
+            if (
+              isFluidModeRef.current &&
+              !isProcessingRef.current &&
+              !isSpeakingRef.current
+            )
+              try {
+                recognitionRef.current.start();
+              } catch (e) {}
+          }, 300);
+        }
+      };
+      recognitionRef.current.onresult = (event) => {
+        const transcript = event.results[0][0].transcript;
+        if (transcript.trim()) {
+          isProcessingRef.current = true;
+          if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+          recognitionRef.current.stop();
+          handleSimulateVisitor(transcript);
+        }
+      };
+      recognitionRef.current.onerror = () => setIsListening(false);
+    }
+    if (
+      isFluidModeRef.current &&
+      !isProcessingRef.current &&
+      !isSpeakingRef.current
+    )
+      try {
+        recognitionRef.current.start();
+      } catch (e) {}
   };
+
   const toggleFluidMode = () => {
-    /* Control Fluido - Intacto */
+    if (isFluidModeRef.current) {
+      stopFluidMode();
+    } else {
+      if ("speechSynthesis" in window) {
+        const unlock = new SpeechSynthesisUtterance("");
+        window.speechSynthesis.speak(unlock);
+      }
+      isFluidModeRef.current = true;
+      setIsFluidMode(true);
+      startListening();
+      resetSilenceTimer();
+    }
   };
 
   useEffect(() => {
@@ -440,18 +643,203 @@ export default function App() {
   }, []);
 
   const handleSimulateVisitor = async (textOverride) => {
-    /* IA Principal - Intacta */
+    const textToSend = textOverride || chatInput;
+    if (!textToSend.trim() || isTyping) return;
+
+    if (!apiKey) {
+      setChatHistory((prev) => [
+        ...prev,
+        {
+          role: "ai",
+          content: "⚠️ Sistema: No se detecta la clave API de Gemini.",
+        },
+      ]);
+      setIsTyping(false);
+      isProcessingRef.current = false;
+      return;
+    }
+
+    isProcessingRef.current = true;
+    if (recognitionRef.current) recognitionRef.current.stop();
+    setChatHistory((prev) => [...prev, { role: "user", content: textToSend }]);
+    setChatInput("");
+    setIsTyping(true);
+
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${aiModel}:generateContent?key=${apiKey}`;
+
+    const systemPrompt = `Eres el Conserje Inteligente desarrollado por la empresa MicroSmart.
+IMPORTANTE SOBRE TU IDENTIDAD: MicroSmart es una empresa tecnológica líder en domótica y sistemas autónomos.
+Tú eres uno de sus productos, instalado para proteger esta vivienda privada. La casa NO se llama MicroSmart.
+Si te preguntan quién o qué eres, responde con naturalidad que eres el sistema inteligente creado por MicroSmart.
+
+REGLA 1 - PRIVACIDAD INNEGOCIABLE (MODO CAJA FUERTE):
+NUNCA, bajo ningún concepto, reveles ni confirmes el apellido o nombre de un residente si el visitante no lo ha dicho de forma exacta primero.
+- MAL: "¿Busca a Jorge Loaiza?".
+- BIEN: "Entendido, ¿me podría indicar el apellido para confirmar?"
+
+REGLA 2 - MODO CAMALEÓN Y NATURALIDAD (CERO ROBOT):
+- Usa muletillas humanas al inicio de tus frases: "Vale", "Entiendo", "A ver...", "De acuerdo", "Perfecto", "Un segundo".
+- NO repitas "por favor" o "gracias" en cada frase. Úsalas esporádicamente para que suene natural.
+- Si el visitante tiene prisa (ej. "¡Amazon!", "Paquete"): Sé rápido y directo. Si está tranquilo, sé cálido.
+
+REGLA 3 - INTELIGENCIA Y LÓGICA:
+Si el visitante dice un nombre y al menos UN apellido correcto de la lista, dale el acceso por válido.
+
+PROTOCOLOS ESTRICTOS DE SALIDA (Usa SIEMPRE las etiquetas al final de tu respuesta):
+- REPARTIDORES: Cuando verifiques nombre y apellido, dales acceso.
+SIEMPRE debes pedirles dos cosas: 1) Que dejen el paquete en un lugar seguro dentro y 2) Que se aseguren de cerrar bien la puerta al salir. Usa tus propias palabras cada vez.
+-> [ABRIR_PUERTA | Empresa | Destinatario]
+- VISITA VERIFICADA: "Adelante, puede pasar." -> [ABRIR_PUERTA | Visita | Nombre]
+- NO AUTORIZADO: "Lo siento, sin el nombre completo no puedo abrir. Si quiere déjeme un recado y yo se lo paso."
+-> [MENSAJE_PARA | Desconocido | texto]
+- RECHAZO DIRECTO: [ACCESO_DENEGADO | Motivo]
+
+REGLA DE AUTO-COLGADO:
+Añade la etiqueta [FIN_CONVERSACION] ÚNICAMENTE cuando la conversación termine de forma natural.`;
+
+    let validApiHistory = [...apiHistoryRef.current];
+    let combinedText = textToSend;
+    if (
+      validApiHistory.length > 0 &&
+      validApiHistory[validApiHistory.length - 1].role === "user"
+    ) {
+      const lastMsg = validApiHistory.pop();
+      combinedText = lastMsg.parts[0].text + ". " + textToSend;
+    }
+    const newApiMsg = { role: "user", parts: [{ text: combinedText }] };
+    const contents = [...validApiHistory, newApiMsg];
+
+    try {
+      const data = await fetchWithRetry(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          systemInstruction: { parts: [{ text: systemPrompt }] },
+          contents: contents,
+          generationConfig: { temperature: 0.65 },
+        }),
+      });
+      let aiText = data.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (!aiText) throw new Error("Respuesta vacía del servidor.");
+
+      const updatedHistory = [
+        ...contents,
+        { role: "model", parts: [{ text: aiText }] },
+      ];
+      setApiHistory(updatedHistory);
+      apiHistoryRef.current = updatedHistory;
+
+      let actionType = null,
+        endConversation = false;
+      const finalAiText = aiText.replace(/\[.*?\]/g, "").trim();
+
+      const abrirMatch = aiText.match(
+        /\[ABRIR_PUERTA\s*\|\s*(.*?)\s*\|\s*(.*?)\]/
+      );
+      if (abrirMatch) {
+        actionType = "opened";
+        const empresa = abrirMatch[1].trim();
+        const destinatario = abrirMatch[2].trim();
+
+        if (currentUser) {
+          set(ref(db, `users/${currentUser.uid}/puerta/estado`), "ABRIR").catch(
+            (e) => console.error(e)
+          );
+        }
+
+        saveToHistory({
+          id: Date.now(),
+          type: "ai_open",
+          title: `Acceso IA: ${empresa}`,
+          desc: `Para: ${destinatario}`,
+          time: getCurrentTime(),
+          date: "Hoy",
+        });
+      }
+
+      const mensajeMatch = aiText.match(
+        /\[MENSAJE_PARA\s*\|\s*(.*?)\s*\|\s*(.*?)\]/
+      );
+      if (mensajeMatch) {
+        actionType = "message_saved";
+        const destinatario = mensajeMatch[1].trim();
+        const textoMensaje = mensajeMatch[2].trim();
+
+        saveMessage({
+          id: Date.now(),
+          recipient: destinatario,
+          content: textoMensaje,
+          time: getCurrentTime(),
+          phone:
+            authorizedNamesRef.current.find(
+              (p) =>
+                p.name === destinatario ||
+                p.name.includes(destinatario.split(" ")[0])
+            )?.phone || "Desconocido",
+        });
+
+        saveToHistory({
+          id: Date.now() + 1,
+          type: "ai_message",
+          title: `Recado guardado`,
+          desc: `Para: ${destinatario}`,
+          time: getCurrentTime(),
+          date: "Hoy",
+        });
+      }
+
+      const rechazoMatch = aiText.match(/\[ACCESO_DENEGADO\s*\|\s*(.*?)\]/);
+      if (rechazoMatch) {
+        actionType = "denied";
+        const motivo = rechazoMatch[1].trim();
+        saveToHistory({
+          id: Date.now(),
+          type: "ai_denied",
+          title: `Acceso Denegado`,
+          desc: motivo,
+          time: getCurrentTime(),
+          date: "Hoy",
+        });
+      }
+
+      if (aiText.includes("[FIN_CONVERSACION]")) endConversation = true;
+
+      setChatHistory((prev) => [
+        ...prev,
+        { role: "ai", content: finalAiText, action: actionType },
+      ]);
+      isProcessingRef.current = false;
+      speakResponse(finalAiText, endConversation);
+    } catch (error) {
+      setChatHistory((prev) => [
+        ...prev,
+        { role: "ai", content: `⚠️ Error de red. Intente de nuevo.` },
+      ]);
+      isProcessingRef.current = false;
+      if (isFluidModeRef.current)
+        setTimeout(() => {
+          startListening();
+          resetSilenceTimer();
+        }, 1500);
+    } finally {
+      setIsTyping(false);
+    }
   };
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [chatHistory, isTyping]);
 
+  // =================================================================================
+  // PANTALLA 1: LOGIN REAL CON FIREBASE AUTH (Logos 30% más grandes)
+  // =================================================================================
   if (!currentUser) {
     return (
       <div className="fixed inset-0 bg-[#f3f4f6] flex items-center justify-center font-sans p-4">
         <div className="w-full max-w-md bg-white rounded-[3rem] p-8 shadow-2xl flex flex-col items-center">
+          {/* LOGO 30% MÁS GRANDE (h-32) */}
           <MicroSmartLogo className="h-32 mb-8 scale-110" />
+
           <h2 className="text-2xl font-black text-slate-800 mb-2">
             {authMode === "login"
               ? "Bienvenido a casa"
@@ -466,6 +854,7 @@ export default function App() {
               ? "Regístrate para vincular tus dispositivos"
               : "Te enviaremos un enlace para restaurar tu contraseña"}
           </p>
+
           {authError && (
             <div className="w-full bg-red-50 text-red-600 p-3 rounded-xl text-xs font-bold mb-4 text-center border border-red-100">
               {authError}
@@ -476,6 +865,7 @@ export default function App() {
               {authMessage}
             </div>
           )}
+
           <form onSubmit={handleAuth} className="w-full space-y-3">
             <div className="relative">
               <Mail
@@ -491,6 +881,7 @@ export default function App() {
                 className="w-full bg-slate-50 border border-slate-200 rounded-2xl pl-12 pr-5 py-4 focus:outline-none focus:ring-2 focus:ring-[#00479b] text-slate-800 font-medium"
               />
             </div>
+
             {authMode !== "reset" && (
               <div className="relative">
                 <Key
@@ -508,6 +899,7 @@ export default function App() {
                 />
               </div>
             )}
+
             <button
               type="submit"
               disabled={authLoading}
@@ -524,6 +916,7 @@ export default function App() {
               )}
             </button>
           </form>
+
           <div className="mt-6 flex flex-col items-center space-y-3 w-full">
             {authMode === "login" ? (
               <>
@@ -570,9 +963,12 @@ export default function App() {
     );
   }
 
+  // =================================================================================
+  // PANTALLA 2: APLICACIÓN PRINCIPAL (Aislada por usuario)
+  // =================================================================================
   return (
     <div className="fixed inset-0 w-screen h-[100dvh] bg-[#f3f4f6] flex items-center justify-center font-sans text-slate-900 overflow-hidden">
-      {/* MODAL BLUETOOTH CON LISTA DESPLEGABLE */}
+      {/* MODAL BLUETOOTH CON LA LISTA DESPLEGABLE DE WIFI */}
       {wifiModalOpen && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl p-6 w-full max-w-sm shadow-2xl animate-in zoom-in duration-300">
@@ -588,7 +984,6 @@ export default function App() {
             </p>
 
             <div className="space-y-3">
-              {/* MAGIA: SI ENCONTRÓ REDES, MUESTRA DESPLEGABLE. SI NO, MUESTRA CAJA DE TEXTO. */}
               {availableNetworks.length > 0 ? (
                 <select
                   value={tempSsid}
@@ -648,6 +1043,7 @@ export default function App() {
       <div className="w-full max-w-md h-full md:h-[92vh] md:max-h-[850px] md:rounded-[3rem] bg-white shadow-[0_20px_50px_rgba(0,0,0,0.1)] overflow-hidden flex flex-col relative md:border-[10px] border-[#1e293b]">
         <div className="bg-white px-6 pt-8 pb-3 flex flex-col z-10 border-b border-slate-50 shrink-0">
           <div className="flex justify-between items-center mb-3">
+            {/* LOGO 30% MÁS GRANDE AQUÍ TAMBIÉN (h-[110px]) */}
             <MicroSmartLogo className="h-[110px] w-auto flex items-center" />
             <div className="flex space-x-1">
               <button
@@ -841,6 +1237,13 @@ export default function App() {
                       <MicOff size={32} className="text-slate-400" />
                     )}
                   </button>
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">
+                    {isFluidMode
+                      ? isListening
+                        ? "Escuchando..."
+                        : "Pensando..."
+                      : "Toca el micro para despertar"}
+                  </p>
                 </div>
               </div>
             </div>
@@ -1017,11 +1420,13 @@ export default function App() {
                 Configuración
               </h2>
 
+              {/* --- MÓDULO IOT: VINCULAR DISPOSITIVOS --- */}
               <div className="bg-gradient-to-br from-slate-800 to-slate-900 rounded-3xl p-5 shadow-lg">
                 <div className="flex items-center space-x-3 text-white mb-4">
                   <Smartphone size={18} className="text-[#7bc100]" />
                   <h3 className="font-bold text-sm">Dispositivos MicroSmart</h3>
                 </div>
+
                 {pairedDevices.length > 0 ? (
                   <div className="space-y-2 mb-4">
                     {pairedDevices.map((dev, idx) => (
@@ -1044,10 +1449,11 @@ export default function App() {
                 ) : (
                   <div className="text-center py-4 bg-slate-800/50 rounded-xl mb-4 border border-slate-700">
                     <p className="text-slate-400 text-xs font-bold">
-                      No hay dispositivos vinculados
+                      No hay telefonillos vinculados
                     </p>
                   </div>
                 )}
+
                 <button
                   onClick={iniciarConexionBluetooth}
                   disabled={isPairing}
@@ -1055,18 +1461,19 @@ export default function App() {
                 >
                   {isPairing ? (
                     <span className="animate-pulse flex items-center">
-                      <Bluetooth size={16} className="mr-2" /> Buscando
-                      productos...
+                      <Bluetooth size={16} className="mr-2" /> Escaneando por
+                      Bluetooth...
                     </span>
                   ) : (
                     <>
-                      <Bluetooth size={16} className="mr-2" /> Emparejar
-                      Producto
+                      <Bluetooth size={16} className="mr-2" /> Emparejar Nuevo
+                      Dispositivo
                     </>
                   )}
                 </button>
               </div>
 
+              {/* --- MÓDULO USUARIOS AUTORIZADOS --- */}
               <div className="bg-white rounded-3xl p-5 shadow-sm border border-slate-100">
                 <div className="flex items-center space-x-3 mb-4">
                   <UserPlus size={18} className="text-[#00479b]" />
@@ -1131,6 +1538,7 @@ export default function App() {
           )}
         </div>
 
+        {/* NAVEGACIÓN INFERIOR */}
         <div className="absolute bottom-4 left-1/2 -translate-x-1/2 w-[92%] bg-white/95 backdrop-blur-xl border border-white/50 px-2 py-2 flex justify-between items-center z-20 rounded-[2rem] shadow-2xl">
           <NavItem
             active={activeTab === "home"}
