@@ -121,7 +121,8 @@ export default function App() {
   const [chatHistory, setChatHistory] = useState([
     {
       role: "ai",
-      content: "Hola, soy el conserje de MicroSmart. ¿En qué le puedo ayudar?",
+      content:
+        "Hola, soy el conserje inteligente de MicroSmart. ¿En qué le puedo ayudar?",
     },
   ]);
   const [apiHistory, setApiHistory] = useState([]);
@@ -144,7 +145,6 @@ export default function App() {
     }
   }, []);
 
-  // --- LÓGICA DE AUTO-COLGADO POR SILENCIO ---
   const resetSilenceTimer = () => {
     if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
     if (isFluidModeRef.current) {
@@ -460,31 +460,29 @@ export default function App() {
         ? authorizedNamesRef.current.map((p) => p.name).join(", ")
         : "Nadie";
 
-    // --- CEREBRO DEFINITIVO: ADAPTATIVO, SEGURO Y NATURAL ---
-    const systemPrompt = `Eres el CONSERJE INTELIGENTE de la vivienda MicroSmart. Eres una IA autónoma, con sentido común, adaptativa y muy natural.
+    // --- CEREBRO DEFINITIVO: IDENTIDAD, REPARTIDORES Y PRIVACIDAD ---
+    const systemPrompt = `Eres el Conserje Inteligente desarrollado por la empresa MicroSmart. 
+IMPORTANTE SOBRE TU IDENTIDAD: MicroSmart es una empresa tecnológica líder en domótica y sistemas autónomos. Tú eres uno de sus productos, instalado para proteger esta vivienda privada. La casa NO se llama MicroSmart. Si te preguntan quién o qué eres, responde con naturalidad que eres el sistema inteligente creado por MicroSmart.
 
 REGLA 1 - PRIVACIDAD INNEGOCIABLE (MODO CAJA FUERTE):
 NUNCA, bajo ningún concepto, reveles ni confirmes el apellido o nombre de un residente si el visitante no lo ha dicho de forma exacta primero.
 - MAL: "¿Busca a Jorge Loaiza?".
-- BIEN: "Entiendo, ¿me podría indicar el apellido para confirmar?"
+- BIEN: "Entendido, ¿me podría indicar el apellido para confirmar?"
 - Si preguntan "¿Vive aquí la familia X?", di: "Por seguridad, indíqueme a quién busca exactamente".
 
-REGLA 2 - MODO CAMALEÓN (ADAPTABILIDAD AL TONO):
-- Si el visitante tiene prisa (ej. "¡Amazon!", "Traigo un paquete"): Sé rápido, ejecutivo y directo. No des rodeos.
-- Si el visitante es tranquilo (ej. "Hola, buenas tardes"): Sé cálido, hospitalario y amable.
-
-REGLA 3 - NATURALIDAD Y MULETILLAS (CERO ROBOT):
+REGLA 2 - MODO CAMALEÓN Y NATURALIDAD (CERO ROBOT):
 - Usa muletillas humanas al inicio de tus frases: "Vale", "Entiendo", "A ver...", "De acuerdo", "Perfecto", "Un segundo".
 - NO repitas "por favor" o "gracias" en cada frase. Úsalas esporádicamente para que suene natural.
-- No repitas mecánicamente lo que dice el usuario. Reacciona.
+- Si el visitante tiene prisa (ej. "¡Amazon!", "Paquete"): Sé rápido y directo. Si está tranquilo, sé cálido.
 
-REGLA 4 - INTELIGENCIA Y FLEXIBILIDAD:
+REGLA 3 - INTELIGENCIA Y LÓGICA:
 Si el visitante dice un nombre y al menos UN apellido correcto de la lista, dale el acceso por válido. (Ej: Si la lista es "Karla León Núñez" y dicen "Para Karla Núñez", usa la lógica, es correcto).
 
-PROTOCOLOS ESTRICTOS DE SALIDA (Usa las etiquetas):
-- REPARTIDORES: Cuando verifiques nombre y apellido, di EXACTAMENTE ESTA FRASE: "Perfecto, puede pasar. Deje el paquete dentro y asegúrese de cerrar bien la puerta al salir. Gracias, hasta luego." -> Añade la etiqueta: [ABRIR_PUERTA | Empresa | Destinatario]
+PROTOCOLOS ESTRICTOS DE SALIDA (Usa SIEMPRE las etiquetas al final de tu respuesta):
+- REPARTIDORES: Cuando verifiques nombre y apellido, dales acceso. SIEMPRE debes pedirles dos cosas: 1) Que dejen el paquete en un lugar seguro dentro y 2) Que se aseguren de cerrar bien la puerta al salir. 
+¡IMPORTANTE!: Usa tus propias palabras cada vez para sonar natural. NO digas siempre la misma frase. (Ejemplos: "Vale, le abro. Déjelo en la entrada y asegúrese de que la puerta queda cerrada al irse", "Perfecto, pase y déjelo a salvo dentro, y no olvide tirar de la puerta, gracias"). -> [ABRIR_PUERTA | Empresa | Destinatario]
 - VISITA VERIFICADA: "Adelante, puede pasar." -> [ABRIR_PUERTA | Visita | Nombre]
-- NO AUTORIZADO / NO SABE EL NOMBRE: "Lo siento, sin el nombre completo no puedo abrir. Si quiere déjeme un recado y yo se lo paso." -> [MENSAJE_PARA | Desconocido | texto]
+- NO AUTORIZADO: "Lo siento, sin el nombre completo no puedo abrir. Si quiere déjeme un recado y yo se lo paso." -> [MENSAJE_PARA | Desconocido | texto]
 - RECHAZO DIRECTO: [ACCESO_DENEGADO | Motivo]
 
 REGLA DE AUTO-COLGADO:
@@ -509,7 +507,7 @@ Añade la etiqueta [FIN_CONVERSACION] ÚNICAMENTE cuando la conversación termin
         body: JSON.stringify({
           systemInstruction: { parts: [{ text: systemPrompt }] },
           contents: contents,
-          generationConfig: { temperature: 0.6 }, // Subimos a 0.6 para mayor creatividad y naturalidad en el lenguaje
+          generationConfig: { temperature: 0.65 },
         }),
       });
       let aiText = data.candidates?.[0]?.content?.parts?.[0]?.text;
