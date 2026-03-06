@@ -5,10 +5,11 @@
   "keywords": [],
   "main": "src/index.tsx",
   "dependencies": {
+    "firebase": "^10.14.1",
+    "lucide-react": "0.576.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "react-scripts": "^5.0.0",
-    "lucide-react": "0.576.0"
+    "react-scripts": "^5.0.0"
   },
   "devDependencies": {
     "@types/react": "19.0.0",

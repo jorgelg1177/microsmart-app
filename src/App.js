@@ -27,10 +27,42 @@ import {
   Wand2,
   FileText,
   CheckCircle2,
-  Lock, // Nuevo icono
-  Smartphone, // Nuevo icono
-  Bluetooth, // Nuevo icono
+  Lock,
+  Smartphone,
+  Bluetooth,
+  Mail,
+  Key,
 } from "lucide-react";
+
+// --- IMPORTACIONES DE FIREBASE ---
+import { initializeApp } from "firebase/app";
+import {
+  getAuth,
+  onAuthStateChanged,
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  sendPasswordResetEmail,
+  signOut,
+} from "firebase/auth";
+import { getDatabase, ref, set, push, onValue } from "firebase/database";
+
+// =========================================================================
+// ⚠️ AQUÍ VAN TUS CLAVES REALES DE FIREBASE (Búscalas en la consola de Firebase)
+const firebaseConfig = {
+  apiKey: "TU_API_KEY_AQUÍ",
+  authDomain: "tu-proyecto.firebaseapp.com",
+  databaseURL: "https://tu-proyecto-default-rtdb.firebaseio.com",
+  projectId: "tu-proyecto",
+  storageBucket: "tu-proyecto.appspot.com",
+  messagingSenderId: "TU_SENDER_ID",
+  appId: "TU_APP_ID",
+};
+
+// Inicializar Firebase
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getDatabase(app);
+// =========================================================================
 
 const fetchWithRetry = async (url, options, retries = 2, delay = 1000) => {
   try {
@@ -89,18 +121,21 @@ const getCurrentTime = () => {
 };
 
 export default function App() {
-  // --- NUEVOS ESTADOS DE SEGURIDAD Y EMPAREJAMIENTO ---
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [userEmail, setUserEmail] = useState("");
-  const [isPairing, setIsPairing] = useState(false);
-  const [pairedDevices, setPairedDevices] = useState([]); // Lista de dispositivos emparejados
+  // --- ESTADOS DE SEGURIDAD Y REGISTRO ---
+  const [currentUser, setCurrentUser] = useState(null);
+  const [authMode, setAuthMode] = useState("login"); // Puede ser 'login', 'register' o 'reset'
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [authError, setAuthError] = useState("");
+  const [authMessage, setAuthMessage] = useState("");
+  const [authLoading, setAuthLoading] = useState(false);
 
+  // --- ESTADOS PRINCIPALES DE LA APP ---
   const [activeTab, setActiveTab] = useState("home");
   const [doorStatus, setDoorStatus] = useState("idle");
-  const [authorizedNames, setAuthorizedNames] = useState([
-    { name: "Jorge Loaiza", phone: "+34 600 111 222" },
-    { name: "Karla León Núñez", phone: "+34 600 333 444" },
-  ]);
+  const [isPairing, setIsPairing] = useState(false);
+  const [pairedDevices, setPairedDevices] = useState([]);
+  const [authorizedNames, setAuthorizedNames] = useState([]);
   const [newName, setNewName] = useState("");
   const [newPhone, setNewPhone] = useState("");
   const [historyLog, setHistoryLog] = useState([]);
@@ -132,36 +167,75 @@ export default function App() {
   ]);
   const [apiHistory, setApiHistory] = useState([]);
 
-  // =========================================================================
-  const apiKey = process.env.REACT_APP_GEMINI_API_KEY;
+  const apiKey = process.env.REACT_APP_GEMINI_API_KEY; // Tu clave de Gemini
   const aiModel = "gemini-2.5-flash";
-  const firebaseUrl = process.env.REACT_APP_FIREBASE_URL;
-  // =========================================================================
+
+  // --- ESCUCHAR SI EL USUARIO ESTÁ LOGUEADO ---
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      setCurrentUser(user);
+      if (!user) {
+        setHistoryLog([]);
+        setPairedDevices([]);
+        setAuthorizedNames([]);
+        setMessagesList([]);
+      }
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // --- CARGAR DATOS ÚNICOS DEL USUARIO DESDE FIREBASE ---
+  useEffect(() => {
+    if (currentUser) {
+      const uid = currentUser.uid;
+
+      // Cargar Dispositivos del usuario
+      onValue(ref(db, `users/${uid}/devices`), (snapshot) => {
+        setPairedDevices(snapshot.val() ? Object.values(snapshot.val()) : []);
+      });
+
+      // Cargar Nombres Autorizados
+      onValue(ref(db, `users/${uid}/authorizedNames`), (snapshot) => {
+        setAuthorizedNames(snapshot.val() ? Object.values(snapshot.val()) : []);
+      });
+
+      // Cargar Historial
+      onValue(ref(db, `users/${uid}/history`), (snapshot) => {
+        const data = snapshot.val();
+        if (data) {
+          const loadedHistory = Object.keys(data)
+            .map((key) => ({
+              ...data[key],
+              dbKey: key,
+            }))
+            .sort((a, b) => b.id - a.id);
+          setHistoryLog(loadedHistory);
+        } else {
+          setHistoryLog([]);
+        }
+      });
+
+      // Cargar Recados (Mensajes)
+      onValue(ref(db, `users/${uid}/messages`), (snapshot) => {
+        const data = snapshot.val();
+        if (data) {
+          const loadedMessages = Object.keys(data)
+            .map((key) => ({
+              ...data[key],
+              dbKey: key,
+            }))
+            .sort((a, b) => b.id - a.id);
+          setMessagesList(loadedMessages);
+        } else {
+          setMessagesList([]);
+        }
+      });
+    }
+  }, [currentUser]);
 
   useEffect(() => {
     authorizedNamesRef.current = authorizedNames;
   }, [authorizedNames]);
-
-  // --- CARGAR HISTORIAL DE FIREBASE AL INICIAR SESIÓN ---
-  useEffect(() => {
-    if (isAuthenticated && firebaseUrl) {
-      fetch(`${firebaseUrl}/history.json`)
-        .then((res) => res.json())
-        .then((data) => {
-          if (data) {
-            // Convertir el objeto de Firebase en un array y ordenarlo por fecha
-            const loadedHistory = Object.keys(data)
-              .map((key) => ({
-                ...data[key],
-                dbKey: key,
-              }))
-              .sort((a, b) => b.id - a.id);
-            setHistoryLog(loadedHistory);
-          }
-        })
-        .catch((err) => console.error("Error cargando historial", err));
-    }
-  }, [isAuthenticated, firebaseUrl]);
 
   useEffect(() => {
     if ("speechSynthesis" in window) {
@@ -171,22 +245,105 @@ export default function App() {
     }
   }, []);
 
-  // --- FUNCIÓN PARA GUARDAR EN LA NUBE ---
-  const saveToHistory = async (newLog) => {
-    setHistoryLog((prev) => [newLog, ...prev]);
-    if (firebaseUrl) {
-      try {
-        await fetch(`${firebaseUrl}/history.json`, {
-          method: "POST", // POST crea un registro único nuevo
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(newLog),
-        });
-      } catch (error) {
-        console.error("No se pudo guardar en la nube", error);
+  // --- FUNCIONES DE AUTENTICACIÓN ---
+  const handleAuth = async (e) => {
+    e.preventDefault();
+    setAuthError("");
+    setAuthMessage("");
+    setAuthLoading(true);
+    try {
+      if (authMode === "login") {
+        await signInWithEmailAndPassword(auth, email, password);
+      } else if (authMode === "register") {
+        await createUserWithEmailAndPassword(auth, email, password);
+        setAuthMessage("Cuenta creada con éxito.");
+      } else if (authMode === "reset") {
+        await sendPasswordResetEmail(auth, email);
+        setAuthMessage("Revisa tu correo para cambiar la contraseña.");
       }
+    } catch (error) {
+      setAuthError("Error: Verifica tus datos. " + error.message);
+    } finally {
+      setAuthLoading(false);
     }
   };
 
+  const handleLogout = () => signOut(auth);
+
+  // --- GUARDADO PERSISTENTE EN BASE DE DATOS ---
+  const saveToHistory = async (newLog) => {
+    if (!currentUser) return;
+    await push(ref(db, `users/${currentUser.uid}/history`), newLog);
+  };
+
+  const saveMessage = async (newMessage) => {
+    if (!currentUser) return;
+    await push(ref(db, `users/${currentUser.uid}/messages`), newMessage);
+  };
+
+  const handlePairDevice = async () => {
+    if (!currentUser) return;
+    setIsPairing(true);
+    setTimeout(async () => {
+      const newDevice = `ESP32_Interfono_${Math.floor(Math.random() * 1000)}`;
+      const updatedDevices = [...pairedDevices, newDevice];
+      await set(ref(db, `users/${currentUser.uid}/devices`), updatedDevices);
+      setIsPairing(false);
+    }, 3000);
+  };
+
+  const handleAddName = async () => {
+    if (newName.trim() && newPhone.trim() && currentUser) {
+      const formattedPhone = newPhone.startsWith("+")
+        ? newPhone.trim()
+        : `+34 ${newPhone.trim()}`;
+      const updatedNames = [
+        ...authorizedNames,
+        { name: newName.trim(), phone: formattedPhone },
+      ];
+      await set(
+        ref(db, `users/${currentUser.uid}/authorizedNames`),
+        updatedNames
+      );
+      setNewName("");
+      setNewPhone("");
+    }
+  };
+
+  const handleRemoveName = async (nameToRemove) => {
+    if (!currentUser) return;
+    const updatedNames = authorizedNames.filter(
+      (person) => person.name !== nameToRemove
+    );
+    await set(
+      ref(db, `users/${currentUser.uid}/authorizedNames`),
+      updatedNames
+    );
+  };
+
+  const handleOpenDoor = async () => {
+    if (doorStatus !== "idle" || !currentUser) return;
+    setDoorStatus("opening");
+    try {
+      await set(ref(db, `users/${currentUser.uid}/puerta/estado`), "ABRIR");
+      setDoorStatus("opened");
+      saveToHistory({
+        id: Date.now(),
+        type: "manual",
+        title: "Apertura Manual",
+        desc: `Desde App por ${currentUser.email}`,
+        time: getCurrentTime(),
+        date: "Hoy",
+      });
+    } catch (error) {
+      alert("Error de conexión con la base de datos.");
+      setDoorStatus("idle");
+    } finally {
+      setTimeout(() => setDoorStatus("idle"), 2500);
+    }
+  };
+
+  // --- LÓGICA DE IA Y VOZ (INTACTA) ---
   const resetSilenceTimer = () => {
     if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
     if (isFluidModeRef.current) {
@@ -416,63 +573,6 @@ export default function App() {
     };
   }, []);
 
-  useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [chatHistory, isTyping]);
-
-  const handleAddName = () => {
-    if (newName.trim() && newPhone.trim()) {
-      const formattedPhone = newPhone.startsWith("+")
-        ? newPhone.trim()
-        : `+34 ${newPhone.trim()}`;
-      setAuthorizedNames([
-        ...authorizedNames,
-        { name: newName.trim(), phone: formattedPhone },
-      ]);
-      setNewName("");
-      setNewPhone("");
-    }
-  };
-
-  const handleRemoveName = (nameToRemove) => {
-    setAuthorizedNames(
-      authorizedNames.filter((person) => person.name !== nameToRemove)
-    );
-  };
-
-  const handleOpenDoor = async () => {
-    if (doorStatus !== "idle") return;
-    setDoorStatus("opening");
-    try {
-      if (firebaseUrl) {
-        await fetch(`${firebaseUrl}/puerta.json`, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify("ABRIR"),
-        });
-      }
-      setDoorStatus("opened");
-
-      // Usar la nueva función persistente
-      saveToHistory({
-        id: Date.now(),
-        type: "manual",
-        title: "Apertura Manual",
-        desc: `Desde App por ${userEmail || "Usuario"}`,
-        time: getCurrentTime(),
-        date: "Hoy",
-      });
-    } catch (error) {
-      console.error("Error al conectar con la nube:", error);
-      alert(
-        "Error de conexión. Revisa que configuraste bien la URL de Firebase."
-      );
-      setDoorStatus("idle");
-    } finally {
-      setTimeout(() => setDoorStatus("idle"), 2500);
-    }
-  };
-
   const handleSimulateVisitor = async (textOverride) => {
     const textToSend = textOverride || chatInput;
     if (!textToSend.trim() || isTyping) return;
@@ -480,7 +580,10 @@ export default function App() {
     if (!apiKey) {
       setChatHistory((prev) => [
         ...prev,
-        { role: "ai", content: "⚠️ Sistema: No se detecta la clave API." },
+        {
+          role: "ai",
+          content: "⚠️ Sistema: No se detecta la clave API de Gemini.",
+        },
       ]);
       setIsTyping(false);
       isProcessingRef.current = false;
@@ -494,10 +597,6 @@ export default function App() {
     setIsTyping(true);
 
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${aiModel}:generateContent?key=${apiKey}`;
-    const allowedNamesList =
-      authorizedNamesRef.current.length > 0
-        ? authorizedNamesRef.current.map((p) => p.name).join(", ")
-        : "Nadie";
 
     const systemPrompt = `Eres el Conserje Inteligente desarrollado por la empresa MicroSmart.
 IMPORTANTE SOBRE TU IDENTIDAD: MicroSmart es una empresa tecnológica líder en domótica y sistemas autónomos.
@@ -508,7 +607,6 @@ REGLA 1 - PRIVACIDAD INNEGOCIABLE (MODO CAJA FUERTE):
 NUNCA, bajo ningún concepto, reveles ni confirmes el apellido o nombre de un residente si el visitante no lo ha dicho de forma exacta primero.
 - MAL: "¿Busca a Jorge Loaiza?".
 - BIEN: "Entendido, ¿me podría indicar el apellido para confirmar?"
-- Si preguntan "¿Vive aquí la familia X?", di: "Por seguridad, indíqueme a quién busca exactamente".
 
 REGLA 2 - MODO CAMALEÓN Y NATURALIDAD (CERO ROBOT):
 - Usa muletillas humanas al inicio de tus frases: "Vale", "Entiendo", "A ver...", "De acuerdo", "Perfecto", "Un segundo".
@@ -517,13 +615,10 @@ REGLA 2 - MODO CAMALEÓN Y NATURALIDAD (CERO ROBOT):
 
 REGLA 3 - INTELIGENCIA Y LÓGICA:
 Si el visitante dice un nombre y al menos UN apellido correcto de la lista, dale el acceso por válido.
-(Ej: Si la lista es "Karla León Núñez" y dicen "Para Karla Núñez", usa la lógica, es correcto).
 
 PROTOCOLOS ESTRICTOS DE SALIDA (Usa SIEMPRE las etiquetas al final de tu respuesta):
 - REPARTIDORES: Cuando verifiques nombre y apellido, dales acceso.
-SIEMPRE debes pedirles dos cosas: 1) Que dejen el paquete en un lugar seguro dentro y 2) Que se aseguren de cerrar bien la puerta al salir.
-¡IMPORTANTE!: Usa tus propias palabras cada vez para sonar natural. NO digas siempre la misma frase.
-(Ejemplos: "Vale, le abro. Déjelo en la entrada y asegúrese de que la puerta queda cerrada al irse", "Perfecto, pase y déjelo a salvo dentro, y no olvide tirar de la puerta, gracias").
+SIEMPRE debes pedirles dos cosas: 1) Que dejen el paquete en un lugar seguro dentro y 2) Que se aseguren de cerrar bien la puerta al salir. Usa tus propias palabras cada vez.
 -> [ABRIR_PUERTA | Empresa | Destinatario]
 - VISITA VERIFICADA: "Adelante, puede pasar." -> [ABRIR_PUERTA | Visita | Nombre]
 - NO AUTORIZADO: "Lo siento, sin el nombre completo no puedo abrir. Si quiere déjeme un recado y yo se lo paso."
@@ -531,7 +626,7 @@ SIEMPRE debes pedirles dos cosas: 1) Que dejen el paquete en un lugar seguro den
 - RECHAZO DIRECTO: [ACCESO_DENEGADO | Motivo]
 
 REGLA DE AUTO-COLGADO:
-Añade la etiqueta [FIN_CONVERSACION] ÚNICAMENTE cuando la conversación termine de forma natural (ya abriste la puerta al repartidor, ya tomaste el recado, o se han despedido).`;
+Añade la etiqueta [FIN_CONVERSACION] ÚNICAMENTE cuando la conversación termine de forma natural.`;
 
     let validApiHistory = [...apiHistoryRef.current];
     let combinedText = textToSend;
@@ -577,12 +672,10 @@ Añade la etiqueta [FIN_CONVERSACION] ÚNICAMENTE cuando la conversación termin
         const empresa = abrirMatch[1].trim();
         const destinatario = abrirMatch[2].trim();
 
-        if (firebaseUrl) {
-          fetch(`${firebaseUrl}/puerta.json`, {
-            method: "PUT",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify("ABRIR"),
-          }).catch((e) => console.error("Error en nube:", e));
+        if (currentUser) {
+          set(ref(db, `users/${currentUser.uid}/puerta/estado`), "ABRIR").catch(
+            (e) => console.error(e)
+          );
         }
 
         saveToHistory({
@@ -602,21 +695,20 @@ Añade la etiqueta [FIN_CONVERSACION] ÚNICAMENTE cuando la conversación termin
         actionType = "message_saved";
         const destinatario = mensajeMatch[1].trim();
         const textoMensaje = mensajeMatch[2].trim();
-        setMessagesList((prev) => [
-          {
-            id: Date.now(),
-            recipient: destinatario,
-            content: textoMensaje,
-            time: getCurrentTime(),
-            phone:
-              authorizedNamesRef.current.find(
-                (p) =>
-                  p.name === destinatario ||
-                  p.name.includes(destinatario.split(" ")[0])
-              )?.phone || "Desconocido",
-          },
-          ...prev,
-        ]);
+
+        saveMessage({
+          id: Date.now(),
+          recipient: destinatario,
+          content: textoMensaje,
+          time: getCurrentTime(),
+          phone:
+            authorizedNamesRef.current.find(
+              (p) =>
+                p.name === destinatario ||
+                p.name.includes(destinatario.split(" ")[0])
+            )?.phone || "Desconocido",
+        });
+
         saveToHistory({
           id: Date.now() + 1,
           type: "ai_message",
@@ -665,66 +757,137 @@ Añade la etiqueta [FIN_CONVERSACION] ÚNICAMENTE cuando la conversación termin
     }
   };
 
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [chatHistory, isTyping]);
+
   // =================================================================================
-  // PANTALLA 1: LOGIN DE SEGURIDAD (Se muestra si isAuthenticated es false)
+  // PANTALLA 1: LOGIN REAL CON FIREBASE AUTH (Logos 30% más grandes)
   // =================================================================================
-  if (!isAuthenticated) {
+  if (!currentUser) {
     return (
       <div className="fixed inset-0 bg-[#f3f4f6] flex items-center justify-center font-sans p-4">
         <div className="w-full max-w-md bg-white rounded-[3rem] p-8 shadow-2xl flex flex-col items-center">
-          <MicroSmartLogo className="h-16 mb-6 scale-110" />
+          {/* LOGO 30% MÁS GRANDE (h-32) */}
+          <MicroSmartLogo className="h-32 mb-8 scale-110" />
+
           <h2 className="text-2xl font-black text-slate-800 mb-2">
-            Bienvenido a casa
+            {authMode === "login"
+              ? "Bienvenido a casa"
+              : authMode === "register"
+              ? "Crear cuenta"
+              : "Recuperar acceso"}
           </h2>
-          <p className="text-slate-500 text-sm mb-8 text-center font-medium">
-            Inicia sesión para gestionar tu hogar
+          <p className="text-slate-500 text-sm mb-6 text-center font-medium">
+            {authMode === "login"
+              ? "Inicia sesión para gestionar tu hogar MicroSmart"
+              : authMode === "register"
+              ? "Regístrate para vincular tus dispositivos"
+              : "Te enviaremos un enlace para restaurar tu contraseña"}
           </p>
 
-          <div className="w-full space-y-4">
-            {/* Botón simulación Google Auth */}
-            <button
-              onClick={() => {
-                setUserEmail("Jorge");
-                setIsAuthenticated(true);
-              }}
-              className="w-full bg-white border-2 border-slate-100 text-slate-700 font-bold py-4 rounded-2xl flex items-center justify-center space-x-3 hover:bg-slate-50 transition active:scale-95"
-            >
-              <img
-                src="https://upload.wikimedia.org/wikipedia/commons/c/c1/Google_%22G%22_logo.svg"
-                alt="Google"
-                className="w-5 h-5"
-              />
-              <span>Entrar con Google</span>
-            </button>
-
-            <div className="flex items-center py-2">
-              <div className="flex-grow border-t border-slate-100"></div>
-              <span className="px-4 text-[10px] font-black text-slate-300 uppercase tracking-widest">
-                O usa tu cuenta
-              </span>
-              <div className="flex-grow border-t border-slate-100"></div>
+          {authError && (
+            <div className="w-full bg-red-50 text-red-600 p-3 rounded-xl text-xs font-bold mb-4 text-center border border-red-100">
+              {authError}
             </div>
+          )}
+          {authMessage && (
+            <div className="w-full bg-green-50 text-green-700 p-3 rounded-xl text-xs font-bold mb-4 text-center border border-green-100">
+              {authMessage}
+            </div>
+          )}
 
-            <div className="space-y-3">
+          <form onSubmit={handleAuth} className="w-full space-y-3">
+            <div className="relative">
+              <Mail
+                className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"
+                size={18}
+              />
               <input
                 type="email"
                 placeholder="Correo electrónico"
-                onChange={(e) => setUserEmail(e.target.value)}
-                className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-4 focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-800 font-medium"
-              />
-              <input
-                type="password"
-                placeholder="Contraseña"
-                className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-4 focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-800 font-medium"
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="w-full bg-slate-50 border border-slate-200 rounded-2xl pl-12 pr-5 py-4 focus:outline-none focus:ring-2 focus:ring-[#00479b] text-slate-800 font-medium"
               />
             </div>
 
+            {authMode !== "reset" && (
+              <div className="relative">
+                <Key
+                  className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"
+                  size={18}
+                />
+                <input
+                  type="password"
+                  placeholder="Contraseña"
+                  required
+                  minLength="6"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-2xl pl-12 pr-5 py-4 focus:outline-none focus:ring-2 focus:ring-[#00479b] text-slate-800 font-medium"
+                />
+              </div>
+            )}
+
             <button
-              onClick={() => setIsAuthenticated(true)}
-              className="w-full bg-[#00479b] text-white font-black text-lg py-4 rounded-2xl shadow-lg shadow-blue-900/30 active:scale-95 transition-all mt-4 flex items-center justify-center"
+              type="submit"
+              disabled={authLoading}
+              className="w-full bg-[#00479b] hover:bg-blue-800 text-white font-black text-lg py-4 rounded-2xl shadow-lg shadow-blue-900/30 active:scale-95 transition-all mt-2 flex items-center justify-center"
             >
-              <Lock size={20} className="mr-2" /> ACCEDER AL SISTEMA
+              {authLoading ? (
+                <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+              ) : authMode === "login" ? (
+                "ACCEDER AL SISTEMA"
+              ) : authMode === "register" ? (
+                "REGISTRARSE"
+              ) : (
+                "ENVIAR ENLACE"
+              )}
             </button>
+          </form>
+
+          <div className="mt-6 flex flex-col items-center space-y-3 w-full">
+            {authMode === "login" ? (
+              <>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAuthMode("reset");
+                    setAuthError("");
+                    setAuthMessage("");
+                  }}
+                  className="text-xs font-bold text-slate-400 hover:text-[#00479b] transition-colors"
+                >
+                  ¿Olvidaste tu contraseña?
+                </button>
+                <div className="flex-grow border-t border-slate-100 w-full my-2"></div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAuthMode("register");
+                    setAuthError("");
+                    setAuthMessage("");
+                  }}
+                  className="text-sm font-bold text-slate-600 hover:text-[#00479b] transition-colors"
+                >
+                  Crear una cuenta nueva
+                </button>
+              </>
+            ) : (
+              <button
+                type="button"
+                onClick={() => {
+                  setAuthMode("login");
+                  setAuthError("");
+                  setAuthMessage("");
+                }}
+                className="text-sm font-bold text-slate-600 hover:text-[#00479b] transition-colors"
+              >
+                ← Volver al inicio de sesión
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -732,21 +895,18 @@ Añade la etiqueta [FIN_CONVERSACION] ÚNICAMENTE cuando la conversación termin
   }
 
   // =================================================================================
-  // PANTALLA 2: APLICACIÓN PRINCIPAL (Se muestra cuando isAuthenticated es true)
+  // PANTALLA 2: APLICACIÓN PRINCIPAL (Aislada por usuario)
   // =================================================================================
   return (
     <div className="fixed inset-0 w-screen h-[100dvh] bg-[#f3f4f6] flex items-center justify-center font-sans text-slate-900 overflow-hidden">
       <div className="w-full max-w-md h-full md:h-[92vh] md:max-h-[850px] md:rounded-[3rem] bg-white shadow-[0_20px_50px_rgba(0,0,0,0.1)] overflow-hidden flex flex-col relative md:border-[10px] border-[#1e293b]">
-        <div className="hidden md:block h-6 w-1/3 bg-[#1e293b] absolute top-0 left-1/2 -translate-x-1/2 rounded-b-2xl z-30"></div>
         <div className="bg-white px-6 pt-8 pb-3 flex flex-col z-10 border-b border-slate-50 shrink-0">
           <div className="flex justify-between items-center mb-3">
-            <MicroSmartLogo className="h-[84px] w-auto flex items-center" />
+            {/* LOGO 30% MÁS GRANDE AQUÍ TAMBIÉN (h-[110px]) */}
+            <MicroSmartLogo className="h-[110px] w-auto flex items-center" />
             <div className="flex space-x-1">
-              <button className="p-2 hover:bg-slate-100 rounded-full transition-colors relative">
-                <Bell size={20} className="text-slate-600" />
-              </button>
               <button
-                onClick={() => setIsAuthenticated(false)}
+                onClick={handleLogout}
                 className="p-2 hover:bg-red-50 rounded-full transition-colors"
               >
                 <LogOut size={20} className="text-red-500" />
@@ -754,12 +914,12 @@ Añade la etiqueta [FIN_CONVERSACION] ÚNICAMENTE cuando la conversación termin
             </div>
           </div>
           <div className="flex items-center space-x-3 p-3 bg-slate-50 rounded-2xl border border-slate-100">
-            <div className="w-10 h-10 bg-[#00479b] rounded-xl flex items-center justify-center shadow-lg shadow-blue-900/10">
+            <div className="w-10 h-10 bg-[#00479b] rounded-xl flex items-center justify-center shadow-lg shadow-blue-900/10 shrink-0">
               <User size={20} className="text-white" />
             </div>
             <div className="overflow-hidden">
               <h1 className="text-base font-bold text-slate-800 leading-tight truncate">
-                Hola, {userEmail || "Jorge"}
+                {currentUser.email}
               </h1>
               <p className="text-[10px] text-slate-500 font-medium flex items-center">
                 <MapPin size={10} className="mr-1 text-[#7bc100]" />{" "}
@@ -769,7 +929,6 @@ Añade la etiqueta [FIN_CONVERSACION] ÚNICAMENTE cuando la conversación termin
           </div>
         </div>
 
-        {/* INTERFAZ CENTRAL */}
         <div className="flex-1 overflow-y-auto pb-24 px-6 pt-2 scrollbar-hide">
           {activeTab === "home" && (
             <div className="flex flex-col items-center space-y-8 py-8 animate-in fade-in zoom-in duration-500">
@@ -797,20 +956,18 @@ Añade la etiqueta [FIN_CONVERSACION] ÚNICAMENTE cuando la conversación termin
                     : "SISTEMA ONLINE"}
                 </span>
               </div>
-
               <button
                 onClick={handleOpenDoor}
                 disabled={doorStatus !== "idle" || pairedDevices.length === 0}
-                className={`relative w-56 h-56 rounded-full flex flex-col items-center justify-center shadow-2xl transition-all duration-300 transform active:scale-95 
-                  ${
-                    pairedDevices.length === 0
-                      ? "bg-slate-200 text-slate-400 shadow-none"
-                      : doorStatus === "idle"
-                      ? "bg-gradient-to-tr from-[#6aa600] to-[#8be000] shadow-[#7bc100]/30"
-                      : doorStatus === "opening"
-                      ? "bg-[#00479b] shadow-blue-900/30"
-                      : "bg-green-500 shadow-green-500/40 scale-105"
-                  }`}
+                className={`relative w-56 h-56 rounded-full flex flex-col items-center justify-center shadow-2xl transition-all duration-300 transform active:scale-95 ${
+                  pairedDevices.length === 0
+                    ? "bg-slate-200 text-slate-400 shadow-none"
+                    : doorStatus === "idle"
+                    ? "bg-gradient-to-tr from-[#6aa600] to-[#8be000] shadow-[#7bc100]/30"
+                    : doorStatus === "opening"
+                    ? "bg-[#00479b] shadow-blue-900/30"
+                    : "bg-green-500 shadow-green-500/40 scale-105"
+                }`}
               >
                 {doorStatus === "idle" && (
                   <>
@@ -859,7 +1016,6 @@ Añade la etiqueta [FIN_CONVERSACION] ÚNICAMENTE cuando la conversación termin
             </div>
           )}
 
-          {/* PESTAÑA IA */}
           {activeTab === "ai" && (
             <div className="flex flex-col h-full animate-in slide-in-from-bottom-4 duration-500 bg-slate-50 -mx-6 rounded-t-[2.5rem] overflow-hidden border-t border-slate-200">
               <div className="p-5 pb-2 flex justify-between items-center bg-white/50 backdrop-blur-sm sticky top-0 z-10">
@@ -952,7 +1108,6 @@ Añade la etiqueta [FIN_CONVERSACION] ÚNICAMENTE cuando la conversación termin
             </div>
           )}
 
-          {/* PESTAÑA HISTORIAL */}
           {activeTab === "history" && (
             <div className="animate-in fade-in slide-in-from-right-4 duration-500 py-4">
               <div className="flex justify-between items-center mb-6">
@@ -1046,7 +1201,6 @@ Añade la etiqueta [FIN_CONVERSACION] ÚNICAMENTE cuando la conversación termin
             </div>
           )}
 
-          {/* PESTAÑA RECADOS */}
           {activeTab === "messages" && (
             <div className="animate-in fade-in slide-in-from-right-4 duration-500 py-4">
               <h2 className="text-xl font-black text-slate-800 mb-6 tracking-tight">
@@ -1119,22 +1273,17 @@ Añade la etiqueta [FIN_CONVERSACION] ÚNICAMENTE cuando la conversación termin
             </div>
           )}
 
-          {/* PESTAÑA AJUSTES (¡Con el Módulo de Emparejamiento!) */}
           {activeTab === "settings" && (
             <div className="animate-in fade-in slide-in-from-right-4 duration-500 space-y-5 py-4">
               <h2 className="text-xl font-black text-slate-800 mb-6 tracking-tight">
                 Configuración
               </h2>
 
-              {/* --- MÓDULO IOT: VINCULAR DISPOSITIVOS --- */}
+              {/* --- MÓDULO IOT: VINCULAR DISPOSITIVOS (AHORA PERSISTENTE) --- */}
               <div className="bg-gradient-to-br from-slate-800 to-slate-900 rounded-3xl p-5 shadow-lg">
-                <div className="flex items-center justify-between mb-4">
-                  <div className="flex items-center space-x-3 text-white">
-                    <Smartphone size={18} className="text-[#7bc100]" />
-                    <h3 className="font-bold text-sm">
-                      Dispositivos MicroSmart
-                    </h3>
-                  </div>
+                <div className="flex items-center space-x-3 text-white mb-4">
+                  <Smartphone size={18} className="text-[#7bc100]" />
+                  <h3 className="font-bold text-sm">Dispositivos MicroSmart</h3>
                 </div>
 
                 {pairedDevices.length > 0 ? (
@@ -1149,7 +1298,7 @@ Añade la etiqueta [FIN_CONVERSACION] ÚNICAMENTE cuando la conversación termin
                             {dev}
                           </span>
                           <span className="text-green-400 text-[9px] font-bold">
-                            Conectado vía Nube
+                            Conectado a la cuenta
                           </span>
                         </div>
                         <CheckCircle2 size={16} className="text-green-500" />
@@ -1165,14 +1314,7 @@ Añade la etiqueta [FIN_CONVERSACION] ÚNICAMENTE cuando la conversación termin
                 )}
 
                 <button
-                  onClick={() => {
-                    setIsPairing(true);
-                    // Simulación del tiempo de escaneo Bluetooth (Web Bluetooth API)
-                    setTimeout(() => {
-                      setIsPairing(false);
-                      setPairedDevices(["ESP32_Interfono_Principal"]);
-                    }, 3000);
-                  }}
+                  onClick={handlePairDevice}
                   disabled={isPairing}
                   className="w-full bg-[#00479b] hover:bg-blue-600 text-white font-bold py-3.5 rounded-xl text-xs flex items-center justify-center transition-all shadow-xl active:scale-95"
                 >
@@ -1190,7 +1332,7 @@ Añade la etiqueta [FIN_CONVERSACION] ÚNICAMENTE cuando la conversación termin
                 </button>
               </div>
 
-              {/* --- MÓDULO USUARIOS (El tuyo original) --- */}
+              {/* --- MÓDULO USUARIOS AUTORIZADOS --- */}
               <div className="bg-white rounded-3xl p-5 shadow-sm border border-slate-100">
                 <div className="flex items-center space-x-3 mb-4">
                   <UserPlus size={18} className="text-[#00479b]" />
@@ -1255,7 +1397,7 @@ Añade la etiqueta [FIN_CONVERSACION] ÚNICAMENTE cuando la conversación termin
           )}
         </div>
 
-        {/* NAVEGACIÓN INFERIOR (Intacta) */}
+        {/* NAVEGACIÓN INFERIOR */}
         <div className="absolute bottom-4 left-1/2 -translate-x-1/2 w-[92%] bg-white/95 backdrop-blur-xl border border-white/50 px-2 py-2 flex justify-between items-center z-20 rounded-[2rem] shadow-2xl">
           <NavItem
             active={activeTab === "home"}
