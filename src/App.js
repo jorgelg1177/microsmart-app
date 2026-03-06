@@ -47,7 +47,6 @@ import {
 import { getDatabase, ref, set, push, onValue } from "firebase/database";
 
 // =========================================================================
-// ⚠️ AQUÍ VAN TUS CLAVES REALES DE FIREBASE (Búscalas en la consola de Firebase)
 const firebaseConfig = {
   apiKey: "AIzaSyAyQe2Ev40lMOx6_gNvMGv6P86oRrGlHvg",
   authDomain: "portero-a87d8.firebaseapp.com",
@@ -59,7 +58,6 @@ const firebaseConfig = {
   appId: "1:779001621682:web:ea0fed5bddc97e489dedab",
 };
 
-// Inicializar Firebase
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getDatabase(app);
@@ -122,16 +120,14 @@ const getCurrentTime = () => {
 };
 
 export default function App() {
-  // --- ESTADOS DE SEGURIDAD Y REGISTRO ---
   const [currentUser, setCurrentUser] = useState(null);
-  const [authMode, setAuthMode] = useState("login"); // Puede ser 'login', 'register' o 'reset'
+  const [authMode, setAuthMode] = useState("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [authError, setAuthError] = useState("");
   const [authMessage, setAuthMessage] = useState("");
   const [authLoading, setAuthLoading] = useState(false);
 
-  // --- ESTADOS PRINCIPALES DE LA APP ---
   const [activeTab, setActiveTab] = useState("home");
   const [doorStatus, setDoorStatus] = useState("idle");
   const [isPairing, setIsPairing] = useState(false);
@@ -144,10 +140,11 @@ export default function App() {
   const [chatInput, setChatInput] = useState("");
   const [isTyping, setIsTyping] = useState(false);
 
-  // --- NUEVOS ESTADOS PARA EL MODAL BLUETOOTH ---
+  // --- ESTADOS PARA BLUETOOTH REAL ---
   const [wifiModalOpen, setWifiModalOpen] = useState(false);
   const [tempSsid, setTempSsid] = useState("");
   const [tempPass, setTempPass] = useState("");
+  const [bleCharacteristic, setBleCharacteristic] = useState(null);
 
   const [isListening, setIsListening] = useState(false);
   const [isFluidMode, setIsFluidMode] = useState(false);
@@ -173,10 +170,9 @@ export default function App() {
   ]);
   const [apiHistory, setApiHistory] = useState([]);
 
-  const apiKey = process.env.REACT_APP_GEMINI_API_KEY; // Tu clave de Gemini
+  const apiKey = process.env.REACT_APP_GEMINI_API_KEY;
   const aiModel = "gemini-2.5-flash";
 
-  // --- ESCUCHAR SI EL USUARIO ESTÁ LOGUEADO ---
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       setCurrentUser(user);
@@ -190,46 +186,31 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
-  // --- CARGAR DATOS ÚNICOS DEL USUARIO DESDE FIREBASE ---
   useEffect(() => {
     if (currentUser) {
       const uid = currentUser.uid;
-
-      // Cargar Dispositivos del usuario
       onValue(ref(db, `users/${uid}/devices`), (snapshot) => {
         setPairedDevices(snapshot.val() ? Object.values(snapshot.val()) : []);
       });
-
-      // Cargar Nombres Autorizados
       onValue(ref(db, `users/${uid}/authorizedNames`), (snapshot) => {
         setAuthorizedNames(snapshot.val() ? Object.values(snapshot.val()) : []);
       });
-
-      // Cargar Historial
       onValue(ref(db, `users/${uid}/history`), (snapshot) => {
         const data = snapshot.val();
         if (data) {
           const loadedHistory = Object.keys(data)
-            .map((key) => ({
-              ...data[key],
-              dbKey: key,
-            }))
+            .map((key) => ({ ...data[key], dbKey: key }))
             .sort((a, b) => b.id - a.id);
           setHistoryLog(loadedHistory);
         } else {
           setHistoryLog([]);
         }
       });
-
-      // Cargar Recados (Mensajes)
       onValue(ref(db, `users/${uid}/messages`), (snapshot) => {
         const data = snapshot.val();
         if (data) {
           const loadedMessages = Object.keys(data)
-            .map((key) => ({
-              ...data[key],
-              dbKey: key,
-            }))
+            .map((key) => ({ ...data[key], dbKey: key }))
             .sort((a, b) => b.id - a.id);
           setMessagesList(loadedMessages);
         } else {
@@ -251,7 +232,6 @@ export default function App() {
     }
   }, []);
 
-  // --- FUNCIONES DE AUTENTICACIÓN ---
   const handleAuth = async (e) => {
     e.preventDefault();
     setAuthError("");
@@ -276,7 +256,6 @@ export default function App() {
 
   const handleLogout = () => signOut(auth);
 
-  // --- GUARDADO PERSISTENTE EN BASE DE DATOS ---
   const saveToHistory = async (newLog) => {
     if (!currentUser) return;
     await push(ref(db, `users/${currentUser.uid}/history`), newLog);
@@ -287,30 +266,17 @@ export default function App() {
     await push(ref(db, `users/${currentUser.uid}/messages`), newMessage);
   };
 
-  const handlePairDevice = async () => {
-    if (!currentUser) return;
+  // --- LÓGICA BLUETOOTH EN ORDEN CORRECTO ---
+  const iniciarConexionBluetooth = async () => {
     setIsPairing(true);
-    setTimeout(async () => {
-      const newDevice = `ESP32_Interfono_${Math.floor(Math.random() * 1000)}`;
-      const updatedDevices = [...pairedDevices, newDevice];
-      await set(ref(db, `users/${currentUser.uid}/devices`), updatedDevices);
-      setIsPairing(false);
-    }, 3000);
-  };
-
-  // --- LA MAGIA DEL BLUETOOTH WEB ---
-  const ejecutarEmparejamientoBLE = async () => {
-    if (!currentUser) return;
-    setIsPairing(true);
-
     try {
-      // 1. Buscamos el ESP32
+      // 1. Abre el escáner del navegador buscando un ESP32 encendido
       const device = await navigator.bluetooth.requestDevice({
         filters: [{ name: "MicroSmart_ESP32" }],
         optionalServices: ["19b10000-e8f2-537e-4f6c-d104768a1214"],
       });
 
-      // 2. Nos conectamos a su "Servicio"
+      // 2. Se conecta al hardware físicamente
       const server = await device.gatt.connect();
       const service = await server.getPrimaryService(
         "19b10000-e8f2-537e-4f6c-d104768a1214"
@@ -319,33 +285,45 @@ export default function App() {
         "19b10001-e8f2-537e-4f6c-d104768a1214"
       );
 
-      // 3. Juntamos el WiFi, la Clave y el UID invisible
+      // Guardamos la conexión para usarla luego
+      setBleCharacteristic(characteristic);
+
+      // 3. SOLO si se conectó bien, abre la ventana pidiendo los datos
+      setWifiModalOpen(true);
+    } catch (error) {
+      console.error(error);
+      // Si el cliente cancela o no encuentra el ESP32, mostramos error
+      alert(
+        "No se pudo conectar. Verifica que el dispositivo MicroSmart esté encendido cerca de ti."
+      );
+    } finally {
+      setIsPairing(false);
+    }
+  };
+
+  const enviarDatosAlDispositivo = async () => {
+    if (!bleCharacteristic || !tempSsid || !tempPass || !currentUser) return;
+
+    try {
+      // Mandamos de golpe el WiFi, Clave y el UID de forma invisible
       const payload = `${tempSsid}||${tempPass}||${currentUser.uid}`;
       const encoder = new TextEncoder();
+      await bleCharacteristic.writeValue(encoder.encode(payload));
 
-      // 4. Se lo enviamos al ESP32
-      await characteristic.writeValue(encoder.encode(payload));
-
-      // 5. Lo guardamos en Firebase como vinculado
-      const newDeviceName = "ESP32_Conserje_BLE";
+      // Guardamos en Firebase que este usuario ya tiene producto
+      const newDeviceName = "Conserje Inteligente";
       if (!pairedDevices.includes(newDeviceName)) {
         const updatedDevices = [...pairedDevices, newDeviceName];
         await set(ref(db, `users/${currentUser.uid}/devices`), updatedDevices);
       }
 
-      alert(
-        "¡Vinculado con éxito! El portero se está conectando al WiFi de tu casa."
-      );
+      alert("¡Producto configurado con éxito! Se está conectando a tu red.");
       setWifiModalOpen(false);
       setTempSsid("");
       setTempPass("");
+      setBleCharacteristic(null);
     } catch (error) {
-      console.error(error);
-      alert(
-        "Error de Bluetooth. Asegúrate de estar cerca y darle permisos al navegador."
-      );
-    } finally {
-      setIsPairing(false);
+      alert("Hubo un error enviando los datos al dispositivo.");
     }
   };
 
@@ -400,7 +378,6 @@ export default function App() {
     }
   };
 
-  // --- LÓGICA DE IA Y VOZ (INTACTA) ---
   const resetSilenceTimer = () => {
     if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
     if (isFluidModeRef.current) {
@@ -597,8 +574,7 @@ export default function App() {
       stopFluidMode();
     } else {
       if ("speechSynthesis" in window) {
-        const unlock = new SpeechSynthesisUtterance("");
-        window.speechSynthesis.speak(unlock);
+        window.speechSynthesis.speak(new SpeechSynthesisUtterance(""));
       }
       isFluidModeRef.current = true;
       setIsFluidMode(true);
@@ -633,7 +609,6 @@ export default function App() {
   const handleSimulateVisitor = async (textOverride) => {
     const textToSend = textOverride || chatInput;
     if (!textToSend.trim() || isTyping) return;
-
     if (!apiKey) {
       setChatHistory((prev) => [
         ...prev,
@@ -658,17 +633,14 @@ export default function App() {
     const systemPrompt = `Eres el Conserje Inteligente desarrollado por la empresa MicroSmart.
 IMPORTANTE SOBRE TU IDENTIDAD: MicroSmart es una empresa tecnológica líder en domótica y sistemas autónomos.
 Tú eres uno de sus productos, instalado para proteger esta vivienda privada. La casa NO se llama MicroSmart.
-Si te preguntan quién o qué eres, responde con naturalidad que eres el sistema inteligente creado por MicroSmart.
 
 REGLA 1 - PRIVACIDAD INNEGOCIABLE (MODO CAJA FUERTE):
 NUNCA, bajo ningún concepto, reveles ni confirmes el apellido o nombre de un residente si el visitante no lo ha dicho de forma exacta primero.
-- MAL: "¿Busca a Jorge Loaiza?".
-- BIEN: "Entendido, ¿me podría indicar el apellido para confirmar?"
 
 REGLA 2 - MODO CAMALEÓN Y NATURALIDAD (CERO ROBOT):
 - Usa muletillas humanas al inicio de tus frases: "Vale", "Entiendo", "A ver...", "De acuerdo", "Perfecto", "Un segundo".
-- NO repitas "por favor" o "gracias" en cada frase. Úsalas esporádicamente para que suene natural.
-- Si el visitante tiene prisa (ej. "¡Amazon!", "Paquete"): Sé rápido y directo. Si está tranquilo, sé cálido.
+- NO repitas "por favor" o "gracias" en cada frase.
+- Si el visitante tiene prisa (ej. "¡Amazon!"): Sé rápido y directo. Si está tranquilo, sé cálido.
 
 REGLA 3 - INTELIGENCIA Y LÓGICA:
 Si el visitante dice un nombre y al menos UN apellido correcto de la lista, dale el acceso por válido.
@@ -728,13 +700,11 @@ Añade la etiqueta [FIN_CONVERSACION] ÚNICAMENTE cuando la conversación termin
         actionType = "opened";
         const empresa = abrirMatch[1].trim();
         const destinatario = abrirMatch[2].trim();
-
         if (currentUser) {
           set(ref(db, `users/${currentUser.uid}/puerta/estado`), "ABRIR").catch(
             (e) => console.error(e)
           );
         }
-
         saveToHistory({
           id: Date.now(),
           type: "ai_open",
@@ -752,7 +722,6 @@ Añade la etiqueta [FIN_CONVERSACION] ÚNICAMENTE cuando la conversación termin
         actionType = "message_saved";
         const destinatario = mensajeMatch[1].trim();
         const textoMensaje = mensajeMatch[2].trim();
-
         saveMessage({
           id: Date.now(),
           recipient: destinatario,
@@ -765,7 +734,6 @@ Añade la etiqueta [FIN_CONVERSACION] ÚNICAMENTE cuando la conversación termin
                 p.name.includes(destinatario.split(" ")[0])
             )?.phone || "Desconocido",
         });
-
         saveToHistory({
           id: Date.now() + 1,
           type: "ai_message",
@@ -791,7 +759,6 @@ Añade la etiqueta [FIN_CONVERSACION] ÚNICAMENTE cuando la conversación termin
       }
 
       if (aiText.includes("[FIN_CONVERSACION]")) endConversation = true;
-
       setChatHistory((prev) => [
         ...prev,
         { role: "ai", content: finalAiText, action: actionType },
@@ -818,16 +785,11 @@ Añade la etiqueta [FIN_CONVERSACION] ÚNICAMENTE cuando la conversación termin
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [chatHistory, isTyping]);
 
-  // =================================================================================
-  // PANTALLA 1: LOGIN REAL CON FIREBASE AUTH (Logos 30% más grandes)
-  // =================================================================================
   if (!currentUser) {
     return (
       <div className="fixed inset-0 bg-[#f3f4f6] flex items-center justify-center font-sans p-4">
         <div className="w-full max-w-md bg-white rounded-[3rem] p-8 shadow-2xl flex flex-col items-center">
-          {/* LOGO 30% MÁS GRANDE (h-32) */}
           <MicroSmartLogo className="h-32 mb-8 scale-110" />
-
           <h2 className="text-2xl font-black text-slate-800 mb-2">
             {authMode === "login"
               ? "Bienvenido a casa"
@@ -842,7 +804,6 @@ Añade la etiqueta [FIN_CONVERSACION] ÚNICAMENTE cuando la conversación termin
               ? "Regístrate para vincular tus dispositivos"
               : "Te enviaremos un enlace para restaurar tu contraseña"}
           </p>
-
           {authError && (
             <div className="w-full bg-red-50 text-red-600 p-3 rounded-xl text-xs font-bold mb-4 text-center border border-red-100">
               {authError}
@@ -869,7 +830,6 @@ Añade la etiqueta [FIN_CONVERSACION] ÚNICAMENTE cuando la conversación termin
                 className="w-full bg-slate-50 border border-slate-200 rounded-2xl pl-12 pr-5 py-4 focus:outline-none focus:ring-2 focus:ring-[#00479b] text-slate-800 font-medium"
               />
             </div>
-
             {authMode !== "reset" && (
               <div className="relative">
                 <Key
@@ -887,7 +847,6 @@ Añade la etiqueta [FIN_CONVERSACION] ÚNICAMENTE cuando la conversación termin
                 />
               </div>
             )}
-
             <button
               type="submit"
               disabled={authLoading}
@@ -951,12 +910,9 @@ Añade la etiqueta [FIN_CONVERSACION] ÚNICAMENTE cuando la conversación termin
     );
   }
 
-  // =================================================================================
-  // PANTALLA 2: APLICACIÓN PRINCIPAL (Aislada por usuario)
-  // =================================================================================
   return (
     <div className="fixed inset-0 w-screen h-[100dvh] bg-[#f3f4f6] flex items-center justify-center font-sans text-slate-900 overflow-hidden">
-      {/* MODAL WIFI BLUETOOTH INVISIBLE */}
+      {/* MODAL BLUETOOTH CON TEXTOS CORREGIDOS */}
       {wifiModalOpen && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl p-6 w-full max-w-sm shadow-2xl animate-in zoom-in duration-300">
@@ -964,17 +920,17 @@ Añade la etiqueta [FIN_CONVERSACION] ÚNICAMENTE cuando la conversación termin
               <Bluetooth size={32} />
             </div>
             <h3 className="text-xl font-black text-center text-slate-800 mb-2">
-              Conectar Portero
+              Producto MicroSmart
             </h3>
             <p className="text-xs text-center text-slate-500 mb-6">
-              Ingresa los datos del WiFi de tu casa. Enviaremos esta
-              configuración a tu portero de forma segura e invisible.
+              Dispositivo enlazado. Ingresa los datos de tu red WiFi para darle
+              acceso a internet.
             </p>
 
             <div className="space-y-3">
               <input
                 type="text"
-                placeholder="Nombre de tu WiFi"
+                placeholder="Nombre exacto de tu WiFi"
                 value={tempSsid}
                 onChange={(e) => setTempSsid(e.target.value)}
                 className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-[#00479b] text-sm font-medium"
@@ -990,21 +946,20 @@ Añade la etiqueta [FIN_CONVERSACION] ÚNICAMENTE cuando la conversación termin
 
             <div className="mt-6 flex space-x-3">
               <button
-                onClick={() => setWifiModalOpen(false)}
+                onClick={() => {
+                  setWifiModalOpen(false);
+                  setBleCharacteristic(null);
+                }}
                 className="flex-1 py-3 bg-slate-100 text-slate-600 rounded-xl font-bold text-sm"
               >
                 Cancelar
               </button>
               <button
-                onClick={ejecutarEmparejamientoBLE}
-                disabled={isPairing || !tempSsid || !tempPass}
+                onClick={enviarDatosAlDispositivo}
+                disabled={!tempSsid || !tempPass}
                 className="flex-1 py-3 bg-[#00479b] text-white rounded-xl font-bold text-sm shadow-lg flex justify-center items-center"
               >
-                {isPairing ? (
-                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                ) : (
-                  "Vincular"
-                )}
+                Guardar
               </button>
             </div>
           </div>
@@ -1014,7 +969,6 @@ Añade la etiqueta [FIN_CONVERSACION] ÚNICAMENTE cuando la conversación termin
       <div className="w-full max-w-md h-full md:h-[92vh] md:max-h-[850px] md:rounded-[3rem] bg-white shadow-[0_20px_50px_rgba(0,0,0,0.1)] overflow-hidden flex flex-col relative md:border-[10px] border-[#1e293b]">
         <div className="bg-white px-6 pt-8 pb-3 flex flex-col z-10 border-b border-slate-50 shrink-0">
           <div className="flex justify-between items-center mb-3">
-            {/* LOGO 30% MÁS GRANDE AQUÍ TAMBIÉN (h-[110px]) */}
             <MicroSmartLogo className="h-[110px] w-auto flex items-center" />
             <div className="flex space-x-1">
               <button
@@ -1208,13 +1162,6 @@ Añade la etiqueta [FIN_CONVERSACION] ÚNICAMENTE cuando la conversación termin
                       <MicOff size={32} className="text-slate-400" />
                     )}
                   </button>
-                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">
-                    {isFluidMode
-                      ? isListening
-                        ? "Escuchando..."
-                        : "Pensando..."
-                      : "Toca el micro para despertar"}
-                  </p>
                 </div>
               </div>
             </div>
@@ -1391,13 +1338,11 @@ Añade la etiqueta [FIN_CONVERSACION] ÚNICAMENTE cuando la conversación termin
                 Configuración
               </h2>
 
-              {/* --- MÓDULO IOT: VINCULAR DISPOSITIVOS (AHORA PERSISTENTE) --- */}
               <div className="bg-gradient-to-br from-slate-800 to-slate-900 rounded-3xl p-5 shadow-lg">
                 <div className="flex items-center space-x-3 text-white mb-4">
                   <Smartphone size={18} className="text-[#7bc100]" />
                   <h3 className="font-bold text-sm">Dispositivos MicroSmart</h3>
                 </div>
-
                 {pairedDevices.length > 0 ? (
                   <div className="space-y-2 mb-4">
                     {pairedDevices.map((dev, idx) => (
@@ -1420,21 +1365,29 @@ Añade la etiqueta [FIN_CONVERSACION] ÚNICAMENTE cuando la conversación termin
                 ) : (
                   <div className="text-center py-4 bg-slate-800/50 rounded-xl mb-4 border border-slate-700">
                     <p className="text-slate-400 text-xs font-bold">
-                      No hay telefonillos vinculados
+                      No hay dispositivos vinculados
                     </p>
                   </div>
                 )}
-
                 <button
-                  onClick={() => setWifiModalOpen(true)}
+                  onClick={iniciarConexionBluetooth}
+                  disabled={isPairing}
                   className="w-full bg-[#00479b] hover:bg-blue-600 text-white font-bold py-3.5 rounded-xl text-xs flex items-center justify-center transition-all shadow-xl active:scale-95"
                 >
-                  <Bluetooth size={16} className="mr-2" /> Emparejar por
-                  Bluetooth
+                  {isPairing ? (
+                    <span className="animate-pulse flex items-center">
+                      <Bluetooth size={16} className="mr-2" /> Buscando
+                      productos...
+                    </span>
+                  ) : (
+                    <>
+                      <Bluetooth size={16} className="mr-2" /> Emparejar
+                      Producto
+                    </>
+                  )}
                 </button>
               </div>
 
-              {/* --- MÓDULO USUARIOS AUTORIZADOS --- */}
               <div className="bg-white rounded-3xl p-5 shadow-sm border border-slate-100">
                 <div className="flex items-center space-x-3 mb-4">
                   <UserPlus size={18} className="text-[#00479b]" />
@@ -1499,7 +1452,6 @@ Añade la etiqueta [FIN_CONVERSACION] ÚNICAMENTE cuando la conversación termin
           )}
         </div>
 
-        {/* NAVEGACIÓN INFERIOR */}
         <div className="absolute bottom-4 left-1/2 -translate-x-1/2 w-[92%] bg-white/95 backdrop-blur-xl border border-white/50 px-2 py-2 flex justify-between items-center z-20 rounded-[2rem] shadow-2xl">
           <NavItem
             active={activeTab === "home"}
