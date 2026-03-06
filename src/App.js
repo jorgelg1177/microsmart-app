@@ -49,13 +49,14 @@ import { getDatabase, ref, set, push, onValue } from "firebase/database";
 // =========================================================================
 // ⚠️ AQUÍ VAN TUS CLAVES REALES DE FIREBASE (Búscalas en la consola de Firebase)
 const firebaseConfig = {
-  apiKey: "TU_API_KEY_AQUÍ",
-  authDomain: "tu-proyecto.firebaseapp.com",
-  databaseURL: "https://tu-proyecto-default-rtdb.firebaseio.com",
-  projectId: "tu-proyecto",
-  storageBucket: "tu-proyecto.appspot.com",
-  messagingSenderId: "TU_SENDER_ID",
-  appId: "TU_APP_ID",
+  apiKey: "AIzaSyAyQe2Ev40lMOx6_gNvMGv6P86oRrGlHvg",
+  authDomain: "portero-a87d8.firebaseapp.com",
+  databaseURL:
+    "https://portero-a87d8-default-rtdb.europe-west1.firebasedatabase.app",
+  projectId: "portero-a87d8",
+  storageBucket: "portero-a87d8.firebasestorage.app",
+  messagingSenderId: "779001621682",
+  appId: "1:779001621682:web:ea0fed5bddc97e489dedab",
 };
 
 // Inicializar Firebase
