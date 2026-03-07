@@ -52,7 +52,15 @@ import {
   sendPasswordResetEmail,
   signOut,
 } from "firebase/auth";
-import { getDatabase, ref, set, push, onValue } from "firebase/database";
+// AÑADIDO 'remove' PARA PODER BORRAR MENSAJES DE LA BASE DE DATOS
+import {
+  getDatabase,
+  ref,
+  set,
+  push,
+  onValue,
+  remove,
+} from "firebase/database";
 
 // =========================================================================
 const firebaseConfig = {
@@ -163,6 +171,10 @@ export default function App() {
   const [chatInput, setChatInput] = useState("");
   const [isTyping, setIsTyping] = useState(false);
 
+  // --- ESTADOS PARA SELECCIÓN Y BORRADO DE RECADOS ---
+  const [isSelectingMessages, setIsSelectingMessages] = useState(false);
+  const [selectedMessages, setSelectedMessages] = useState([]);
+
   const [wifiModalOpen, setWifiModalOpen] = useState(false);
   const [showiOSModal, setShowiOSModal] = useState(false);
   const [copiedUID, setCopiedUID] = useState(false);
@@ -184,7 +196,6 @@ export default function App() {
   const [isEditingName, setIsEditingName] = useState(false);
   const [tempName, setTempName] = useState("");
 
-  // ESTADOS PARA LOS ACORDEONES DE CONFIGURACIÓN
   const [showDevices, setShowDevices] = useState(false);
   const [showPersons, setShowPersons] = useState(false);
   const [showSupport, setShowSupport] = useState(false);
@@ -222,6 +233,8 @@ export default function App() {
         setDeviceOnline(false);
         setAiEnabled(true);
         setUserName("");
+        setIsSelectingMessages(false);
+        setSelectedMessages([]);
       }
     });
     return () => unsubscribe();
@@ -320,10 +333,48 @@ export default function App() {
     if (currentUser)
       await push(ref(db, `users/${currentUser.uid}/history`), newLog);
   };
+
   const saveMessage = async (newMessage) => {
     if (!newMessage.content || newMessage.content.trim() === "") return;
     if (currentUser)
       await push(ref(db, `users/${currentUser.uid}/messages`), newMessage);
+  };
+
+  // --- FUNCIONES PARA ELIMINAR RECADOS ---
+  const handleDeleteSingleMessage = async (dbKey) => {
+    if (!currentUser) return;
+    if (window.confirm("¿Estás seguro de que quieres eliminar este recado?")) {
+      try {
+        await remove(ref(db, `users/${currentUser.uid}/messages/${dbKey}`));
+      } catch (error) {
+        console.error("Error borrando", error);
+      }
+    }
+  };
+
+  const toggleMessageSelection = (dbKey) => {
+    setSelectedMessages((prev) =>
+      prev.includes(dbKey) ? prev.filter((k) => k !== dbKey) : [...prev, dbKey]
+    );
+  };
+
+  const handleDeleteSelectedMessages = async () => {
+    if (!currentUser || selectedMessages.length === 0) return;
+    if (
+      window.confirm(
+        `¿Eliminar los ${selectedMessages.length} recados seleccionados?`
+      )
+    ) {
+      try {
+        for (let key of selectedMessages) {
+          await remove(ref(db, `users/${currentUser.uid}/messages/${key}`));
+        }
+        setSelectedMessages([]);
+        setIsSelectingMessages(false);
+      } catch (error) {
+        console.error("Error borrando múltiples", error);
+      }
+    }
   };
 
   const handleSaveName = async () => {
@@ -574,30 +625,6 @@ export default function App() {
       setActivitySummary("Error: " + e.message);
     } finally {
       setIsSummarizing(false);
-    }
-  };
-
-  const handleDraftReply = async (message) => {
-    if (!apiKey) return alert("Falta configurar la clave API.");
-    setDraftingId(message.id);
-    const prompt = `Redacta una respuesta de WhatsApp muy corta y amable para este recado: "${message.content}"`;
-    try {
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/${aiModel}:generateContent?key=${apiKey}`;
-      const response = await fetchWithRetry(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
-      });
-      const draft = response.candidates?.[0]?.content?.parts?.[0]?.text;
-      const whatsappUrl = `https://wa.me/${message.phone.replace(
-        /\D/g,
-        ""
-      )}?text=${encodeURIComponent(draft.trim())}`;
-      window.open(whatsappUrl, "_blank");
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setDraftingId(null);
     }
   };
 
@@ -1205,7 +1232,6 @@ export default function App() {
         {/* --- HEADER SUPERIOR --- */}
         <div className="bg-white px-5 sm:px-6 pt-6 sm:pt-8 pb-3 flex flex-col z-10 border-b border-slate-50 shrink-0">
           <div className="flex justify-between items-center mb-3">
-            {/* Logo Responsivo */}
             <MicroSmartLogo
               className="h-[80px] sm:h-[110px] w-auto flex items-center"
               onClick={() => setActiveTab("home")}
@@ -1266,10 +1292,9 @@ export default function App() {
           </div>
         </div>
 
-        {/* CONTENEDOR DE SCROLL (PADDING INFERIOR EXTENDIDO PARA EVITAR "APEÑUSCADO") */}
         <div className="flex-1 overflow-y-auto pb-28 px-4 sm:px-6 pt-2 scrollbar-hide bg-slate-50/50 flex flex-col">
           {/* ========================================================= */}
-          {/* TAB: INICIO (HOME) - REDISEÑADO CON FLUIDEZ               */}
+          {/* TAB: INICIO (HOME) - AHORA MINIMALISTA                    */}
           {/* ========================================================= */}
           {activeTab === "home" && (
             <div className="flex flex-col items-center py-4 sm:py-6 animate-in fade-in zoom-in duration-500 h-full">
@@ -1304,7 +1329,6 @@ export default function App() {
                 </span>
               </div>
 
-              {/* Botón Circular Adaptativo */}
               <button
                 onClick={handleOpenDoor}
                 disabled={
@@ -1360,7 +1384,6 @@ export default function App() {
                 )}
               </button>
 
-              {/* Tarjetas Inferiores Adaptativas */}
               <div className="grid grid-cols-2 gap-3 sm:gap-4 w-full mt-auto mb-2 pt-8">
                 <div
                   onClick={() => setActiveTab("ai")}
@@ -1422,32 +1445,12 @@ export default function App() {
                     Vincular al hogar
                   </p>
                 </div>
-
-                <div
-                  onClick={() => {
-                    setActiveTab("settings");
-                    setShowPersons(true);
-                  }}
-                  className="col-span-2 bg-white p-3 sm:p-4 rounded-3xl shadow-sm border border-slate-100 flex flex-row items-center cursor-pointer hover:shadow-md transition-all active:scale-95 group"
-                >
-                  <div className="p-1.5 sm:p-2 rounded-xl bg-slate-50 text-slate-600 group-hover:bg-[#00479b] group-hover:text-white transition-colors mr-3 sm:mr-4">
-                    <UserPlus className="w-5 h-5 sm:w-6 sm:h-6" />
-                  </div>
-                  <div className="overflow-hidden">
-                    <h4 className="font-black text-slate-800 text-xs sm:text-sm truncate">
-                      Personas Autorizadas
-                    </h4>
-                    <p className="text-[9px] sm:text-[10px] font-bold text-slate-400 truncate">
-                      Gestionar acceso y nombres
-                    </p>
-                  </div>
-                </div>
               </div>
             </div>
           )}
 
           {/* ========================================================= */}
-          {/* TABS SECUNDARIAS (Sin grandes cambios)                      */}
+          {/* TAB: IA                                                   */}
           {/* ========================================================= */}
           {activeTab === "ai" && (
             <div className="flex flex-col h-full animate-in slide-in-from-bottom-4 duration-500 bg-slate-50 -mx-4 sm:-mx-6 rounded-t-[2.5rem] overflow-hidden border-t border-slate-200">
@@ -1551,6 +1554,9 @@ export default function App() {
             </div>
           )}
 
+          {/* ========================================================= */}
+          {/* TAB: HISTORIAL                                            */}
+          {/* ========================================================= */}
           {activeTab === "history" && (
             <div className="animate-in fade-in slide-in-from-right-4 duration-500 py-4">
               <div className="flex justify-between items-center mb-6">
@@ -1644,11 +1650,39 @@ export default function App() {
             </div>
           )}
 
+          {/* ========================================================= */}
+          {/* TAB: RECADOS (AHORA CON BORRADO Y SELECCIÓN)              */}
+          {/* ========================================================= */}
           {activeTab === "messages" && (
             <div className="animate-in fade-in slide-in-from-right-4 duration-500 py-4">
-              <h2 className="text-lg sm:text-xl font-black text-slate-800 mb-6 tracking-tight">
-                Recados
-              </h2>
+              <div className="flex justify-between items-center mb-6">
+                <h2 className="text-lg sm:text-xl font-black text-slate-800 tracking-tight">
+                  Recados
+                </h2>
+                {messagesList.length > 0 && (
+                  <button
+                    onClick={() => {
+                      setIsSelectingMessages(!isSelectingMessages);
+                      setSelectedMessages([]);
+                    }}
+                    className="text-[10px] sm:text-xs font-bold text-[#00479b] hover:text-blue-800 transition-colors bg-blue-50 px-3 py-1.5 rounded-full"
+                  >
+                    {isSelectingMessages ? "Cancelar Selección" : "Seleccionar"}
+                  </button>
+                )}
+              </div>
+
+              {/* Botón Flotante para borrar varios */}
+              {isSelectingMessages && selectedMessages.length > 0 && (
+                <button
+                  onClick={handleDeleteSelectedMessages}
+                  className="w-full mb-4 py-3 bg-red-50 text-red-600 font-bold rounded-xl text-xs flex items-center justify-center border border-red-100 shadow-sm active:scale-95 transition-all"
+                >
+                  <Trash2 size={16} className="mr-2" /> ELIMINAR SELECCIONADOS (
+                  {selectedMessages.length})
+                </button>
+              )}
+
               <div className="space-y-4">
                 {messagesList.length === 0 ? (
                   <div className="text-center py-16 bg-slate-50 rounded-[2.5rem] border-2 border-dashed border-slate-200">
@@ -1661,24 +1695,53 @@ export default function App() {
                   messagesList.map((msg, i) => (
                     <div
                       key={i}
-                      className="bg-white p-4 sm:p-5 rounded-2xl sm:rounded-3xl shadow-md border-l-4 border-l-[#7bc100]"
+                      className="relative bg-white p-4 sm:p-5 rounded-2xl sm:rounded-3xl shadow-md border-l-4 border-l-[#7bc100]"
                     >
-                      <div className="flex justify-between items-start mb-2">
-                        <div>
+                      {/* ICONOS DE ACCIÓN (ESQUINA SUPERIOR DERECHA) */}
+                      <div className="absolute top-4 right-4 flex items-center z-10">
+                        {isSelectingMessages ? (
+                          <button
+                            onClick={() => toggleMessageSelection(msg.dbKey)}
+                            className="p-1"
+                          >
+                            {selectedMessages.includes(msg.dbKey) ? (
+                              <CheckCircle2
+                                size={22}
+                                className="text-[#00479b]"
+                              />
+                            ) : (
+                              <div className="w-[20px] h-[20px] rounded-full border-2 border-slate-300"></div>
+                            )}
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => handleDeleteSingleMessage(msg.dbKey)}
+                            className="p-1 text-slate-300 hover:text-red-500 transition-colors"
+                            title="Eliminar recado"
+                          >
+                            <Trash2 size={18} />
+                          </button>
+                        )}
+                      </div>
+
+                      {/* CONTENIDO DEL RECADO */}
+                      <div className="pr-10">
+                        <div className="flex flex-col items-start mb-2">
                           <span className="text-[7px] sm:text-[8px] font-black text-[#00479b] tracking-tighter uppercase">
                             PARA
                           </span>
                           <h4 className="font-black text-slate-800 text-xs sm:text-sm">
                             {msg.recipient}
                           </h4>
+                          <span className="text-[8px] sm:text-[9px] font-bold text-slate-400 mt-0.5">
+                            {msg.time}
+                          </span>
                         </div>
-                        <span className="text-[8px] sm:text-[9px] font-bold text-slate-400">
-                          {msg.time}
-                        </span>
+                        <p className="text-xs sm:text-sm text-slate-600 mb-4 font-medium italic">
+                          "{msg.content}"
+                        </p>
                       </div>
-                      <p className="text-xs sm:text-sm text-slate-600 mb-4 font-medium italic">
-                        "{msg.content}"
-                      </p>
+
                       <div className="flex w-full mt-2">
                         <a
                           href={`https://wa.me/${msg.phone.replace(
@@ -1703,7 +1766,7 @@ export default function App() {
           )}
 
           {/* ========================================================= */}
-          {/* TAB: AJUSTES (SETTINGS) - REDISEÑO ACORDEÓN               */}
+          {/* TAB: AJUSTES (SETTINGS)                                   */}
           {/* ========================================================= */}
           {activeTab === "settings" && (
             <div className="animate-in fade-in slide-in-from-right-4 duration-500 space-y-3 sm:space-y-4 py-4">
@@ -1859,7 +1922,7 @@ export default function App() {
                         type="text"
                         value={newName}
                         onChange={(e) => setNewName(e.target.value)}
-                        placeholder="Nombre completo"
+                        placeholder="Nombre y Apellido"
                         className="w-full bg-slate-50 border border-slate-200 text-xs sm:text-sm text-slate-800 rounded-lg px-3 py-2.5 sm:py-3 focus:outline-none"
                       />
                       <div className="flex space-x-2">
@@ -1950,7 +2013,7 @@ export default function App() {
           )}
         </div>
 
-        {/* --- NAVEGACIÓN INFERIOR (ANCHO ADAPTATIVO) --- */}
+        {/* --- NAVEGACIÓN INFERIOR --- */}
         <div className="absolute bottom-2 sm:bottom-4 left-1/2 -translate-x-1/2 w-[96%] sm:w-[92%] bg-white/95 backdrop-blur-xl border border-white/50 px-1 sm:px-2 py-1.5 sm:py-2 flex justify-between items-center z-20 rounded-[2rem] shadow-[0_10px_40px_rgba(0,0,0,0.1)]">
           <NavItem
             active={activeTab === "home"}
