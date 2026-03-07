@@ -766,7 +766,6 @@ export default function App() {
     }
   };
 
-  // --- REGLAS GLOBALES DE CSS PARA BLOQUEAR COMPORTAMIENTOS NO DESEADOS DE APPLE ---
   useEffect(() => {
     document.body.style.overflow = "hidden";
     document.body.style.position = "fixed";
@@ -829,6 +828,7 @@ export default function App() {
         ? nombresPermitidos
         : "NADIE. (La lista está vacía, tienes PROHIBIDO abrir la puerta)";
 
+    // --- PROMPT MODIFICADO: OBLIGATORIO PEDIR EMPRESA E INSTRUCCIONES VARIABLES ---
     const systemPrompt = `Eres el Conserje Inteligente de MicroSmart. Eres un sistema global, adaptativo y profesional.
 
     INFORMACIÓN CRÍTICA: Los residentes NO están en casa. Estás operando en remoto.
@@ -841,7 +841,10 @@ export default function App() {
 
     REGLA 2 - REPARTIDORES Y PAQUETERÍA (LOS ÚNICOS QUE ENTRAN):
     - Solo abres a empresas de paquetería (Amazon, Seur, Correos, etc.).
-    - Si el repartidor acierta el nombre Y apellido del destinatario, le abres. -> [ABRIR_PUERTA | Repartidor | Destinatario]
+    - PREGUNTA LA EMPRESA: Si alguien dice que trae un paquete, pregúntale de qué empresa de reparto viene (si no lo ha mencionado).
+    - Si el repartidor dice la empresa y acierta el nombre Y apellido del destinatario, le abres.
+    - INSTRUCCIÓN DE SEGURIDAD AL ABRIR: Cada vez que le des acceso a un repartidor, DEBES pedirle que deje el paquete en un lugar seguro adentro y que por favor se asegure de cerrar bien la puerta al salir. ¡IMPORTANTE! Usa SIEMPRE TUS PROPIAS PALABRAS (varía la forma de decirlo cada vez para no sonar como un robot grabado, sé natural y creativo).
+    - Usa la etiqueta: -> [ABRIR_PUERTA | Empresa | Destinatario]
 
     REGLA 3 - VISITAS Y FAMILIARES (NO ENTRAN, DEJAN RECADO):
     - Como no hay nadie en casa, a las visitas NO se les abre la puerta, incluso si son familia.
@@ -851,7 +854,7 @@ export default function App() {
     - Si es publicidad, comerciales, técnicos sin cita, o no saben el apellido: Recházalos cortésmente. -> [ACCESO_DENEGADO | Motivo]
 
     REGLA 5 - MODO CAMALEÓN Y NUNCA COLGAR DE GOLPE:
-    - Adapta tu tono: Sé ultra rápido con repartidores (tienen prisa). Sé cálido con amigos. Sé frío con desconocidos.
+    - Adapta tu tono: Sé rápido con repartidores, pero siempre da la instrucción de seguridad. Sé cálido con amigos. Sé frío con desconocidos.
     - Usa muletillas humanas al inicio de tus frases ("Vale", "Entiendo", "A ver...").
     - NUNCA uses la etiqueta [FIN_CONVERSACION] al instante. Espera a que la persona se despida explícitamente, o sea un repartidor que ya confirmó que dejó el paquete. Deja que la conversación fluya.`;
 
@@ -987,8 +990,7 @@ export default function App() {
     return (
       <div className="fixed inset-0 bg-[#f3f4f6] flex items-center justify-center font-sans p-4">
         <div className="w-full max-w-md bg-white rounded-[3rem] p-6 sm:p-8 shadow-2xl flex flex-col items-center">
-          {/* LOGO DE INICIO MÁS GRANDE */}
-          <MicroSmartLogo className="h-32 sm:h-40 mb-6 sm:mb-8 scale-125" />
+          <MicroSmartLogo className="h-24 sm:h-32 mb-6 sm:mb-8 scale-125" />
 
           <h2 className="text-xl sm:text-2xl font-black text-slate-800 mb-2">
             {authMode === "login"
@@ -1257,11 +1259,11 @@ export default function App() {
         </div>
       )}
 
+      {/* CONTENEDOR PRINCIPAL RESPONSIVO */}
       <div className="w-full max-w-md h-[100dvh] md:h-[92vh] md:max-h-[850px] md:rounded-[3rem] bg-white shadow-[0_20px_50px_rgba(0,0,0,0.1)] overflow-hidden flex flex-col relative md:border-[10px] border-[#1e293b]">
         {/* --- HEADER SUPERIOR --- */}
         <div className="bg-white px-5 sm:px-6 pt-6 sm:pt-8 pb-3 flex flex-col z-10 border-b border-slate-50 shrink-0">
           <div className="flex justify-between items-center mb-3">
-            {/* LOGO AUMENTADO UN 30% */}
             <MicroSmartLogo
               className="h-[105px] sm:h-[140px] w-auto flex items-center"
               onClick={() => setActiveTab("home")}
@@ -1325,7 +1327,7 @@ export default function App() {
         {/* CONTENEDOR DE SCROLL RESPONSIVO */}
         <div className="flex-1 overflow-y-auto pb-36 sm:pb-40 px-4 sm:px-6 pt-2 scrollbar-hide bg-slate-50/50 flex flex-col">
           {/* ========================================================= */}
-          {/* TAB: INICIO (HOME) - DISEÑO LIMPIO Y ANTI-APLASTAMIENTO   */}
+          {/* TAB: INICIO (HOME)                                        */}
           {/* ========================================================= */}
           {activeTab === "home" && (
             <div className="flex flex-col items-center py-4 sm:py-6 animate-in fade-in zoom-in duration-500 min-h-full">
@@ -1360,7 +1362,6 @@ export default function App() {
                 </span>
               </div>
 
-              {/* Botón de Apertura Adaptativo */}
               <button
                 onClick={handleOpenDoor}
                 disabled={
@@ -1683,7 +1684,7 @@ export default function App() {
           )}
 
           {/* ========================================================= */}
-          {/* TAB: RECADOS (AHORA CON BORRADO Y SELECCIÓN)              */}
+          {/* TAB: RECADOS                                              */}
           {/* ========================================================= */}
           {activeTab === "messages" && (
             <div className="animate-in fade-in slide-in-from-right-4 duration-500 py-4 min-h-full">
@@ -1753,7 +1754,6 @@ export default function App() {
                           </button>
                         )}
                       </div>
-
                       <div className="pr-10">
                         <div className="flex flex-col items-start mb-2">
                           <span className="text-[7px] sm:text-[8px] font-black text-[#00479b] tracking-tighter uppercase">
@@ -1770,7 +1770,6 @@ export default function App() {
                           "{msg.content}"
                         </p>
                       </div>
-
                       <div className="flex w-full mt-2">
                         <a
                           href={`https://wa.me/${msg.phone.replace(
@@ -1803,7 +1802,6 @@ export default function App() {
                 Configuración
               </h2>
 
-              {/* ACORDEÓN 1: TUS EQUIPOS */}
               <div className="bg-white rounded-2xl sm:rounded-3xl shadow-sm border border-slate-100 overflow-hidden transition-all">
                 <button
                   onClick={() => setShowDevices(!showDevices)}
@@ -1890,7 +1888,6 @@ export default function App() {
                 </div>
               </div>
 
-              {/* ACORDEÓN 2: PERSONAS AUTORIZADAS */}
               <div className="bg-white rounded-2xl sm:rounded-3xl shadow-sm border border-slate-100 overflow-hidden transition-all">
                 <button
                   onClick={() => setShowPersons(!showPersons)}
@@ -1979,7 +1976,6 @@ export default function App() {
                 </div>
               </div>
 
-              {/* ACORDEÓN 3: SOPORTE Y AYUDA */}
               <div className="bg-white rounded-2xl sm:rounded-3xl shadow-sm border border-slate-100 overflow-hidden transition-all">
                 <button
                   onClick={() => setShowSupport(!showSupport)}
@@ -2042,7 +2038,7 @@ export default function App() {
           )}
         </div>
 
-        {/* --- NAVEGACIÓN INFERIOR (FLOTANTE CON PROTECCIÓN DE iOS) --- */}
+        {/* --- NAVEGACIÓN INFERIOR --- */}
         <div
           className="absolute left-1/2 -translate-x-1/2 w-[96%] sm:w-[92%] bg-white/95 backdrop-blur-xl border border-white/50 px-1 sm:px-2 pt-1.5 sm:pt-2 pb-1.5 sm:pb-2 flex justify-between items-center z-20 rounded-[2rem] shadow-[0_10px_40px_rgba(0,0,0,0.1)]"
           style={{ bottom: "calc(1rem + env(safe-area-inset-bottom, 0px))" }}
