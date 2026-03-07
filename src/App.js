@@ -52,7 +52,6 @@ import {
   sendPasswordResetEmail,
   signOut,
 } from "firebase/auth";
-// AÑADIDO 'remove' PARA PODER BORRAR MENSAJES DE LA BASE DE DATOS
 import {
   getDatabase,
   ref,
@@ -171,7 +170,6 @@ export default function App() {
   const [chatInput, setChatInput] = useState("");
   const [isTyping, setIsTyping] = useState(false);
 
-  // --- ESTADOS PARA SELECCIÓN Y BORRADO DE RECADOS ---
   const [isSelectingMessages, setIsSelectingMessages] = useState(false);
   const [selectedMessages, setSelectedMessages] = useState([]);
 
@@ -340,7 +338,6 @@ export default function App() {
       await push(ref(db, `users/${currentUser.uid}/messages`), newMessage);
   };
 
-  // --- FUNCIONES PARA ELIMINAR RECADOS ---
   const handleDeleteSingleMessage = async (dbKey) => {
     if (!currentUser) return;
     if (window.confirm("¿Estás seguro de que quieres eliminar este recado?")) {
@@ -628,6 +625,30 @@ export default function App() {
     }
   };
 
+  const handleDraftReply = async (message) => {
+    if (!apiKey) return alert("Falta configurar la clave API.");
+    setDraftingId(message.id);
+    const prompt = `Redacta una respuesta de WhatsApp muy corta y amable para este recado: "${message.content}"`;
+    try {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${aiModel}:generateContent?key=${apiKey}`;
+      const response = await fetchWithRetry(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
+      });
+      const draft = response.candidates?.[0]?.content?.parts?.[0]?.text;
+      const whatsappUrl = `https://wa.me/${message.phone.replace(
+        /\D/g,
+        ""
+      )}?text=${encodeURIComponent(draft.trim())}`;
+      window.open(whatsappUrl, "_blank");
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setDraftingId(null);
+    }
+  };
+
   const speakResponse = (text, shouldEndCall = false) => {
     if ("speechSynthesis" in window) {
       window.speechSynthesis.cancel();
@@ -745,6 +766,7 @@ export default function App() {
     }
   };
 
+  // --- REGLAS GLOBALES DE CSS PARA BLOQUEAR COMPORTAMIENTOS NO DESEADOS DE APPLE ---
   useEffect(() => {
     document.body.style.overflow = "hidden";
     document.body.style.position = "fixed";
@@ -759,7 +781,13 @@ export default function App() {
     meta.content =
       "width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no";
     const style = document.createElement("style");
-    style.innerHTML = `* { touch-action: pan-y; -webkit-tap-highlight-color: transparent; } input, textarea, select { font-size: 16px !important; } .scrollbar-hide::-webkit-scrollbar { display: none; } .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }`;
+    style.innerHTML = `
+      * { touch-action: pan-y; -webkit-tap-highlight-color: transparent; } 
+      html, body { -webkit-text-size-adjust: 100%; overscroll-behavior-y: none; }
+      input, textarea, select { font-size: 16px !important; } 
+      .scrollbar-hide::-webkit-scrollbar { display: none; } 
+      .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+    `;
     document.head.appendChild(style);
     return () => {
       document.body.style.overflow = "auto";
@@ -959,7 +987,9 @@ export default function App() {
     return (
       <div className="fixed inset-0 bg-[#f3f4f6] flex items-center justify-center font-sans p-4">
         <div className="w-full max-w-md bg-white rounded-[3rem] p-6 sm:p-8 shadow-2xl flex flex-col items-center">
-          <MicroSmartLogo className="h-24 sm:h-32 mb-6 sm:mb-8 scale-110" />
+          {/* LOGO DE INICIO MÁS GRANDE */}
+          <MicroSmartLogo className="h-32 sm:h-40 mb-6 sm:mb-8 scale-125" />
+
           <h2 className="text-xl sm:text-2xl font-black text-slate-800 mb-2">
             {authMode === "login"
               ? "Bienvenido a casa"
@@ -1227,13 +1257,13 @@ export default function App() {
         </div>
       )}
 
-      {/* CONTENEDOR PRINCIPAL RESPONSIVO */}
       <div className="w-full max-w-md h-[100dvh] md:h-[92vh] md:max-h-[850px] md:rounded-[3rem] bg-white shadow-[0_20px_50px_rgba(0,0,0,0.1)] overflow-hidden flex flex-col relative md:border-[10px] border-[#1e293b]">
         {/* --- HEADER SUPERIOR --- */}
         <div className="bg-white px-5 sm:px-6 pt-6 sm:pt-8 pb-3 flex flex-col z-10 border-b border-slate-50 shrink-0">
           <div className="flex justify-between items-center mb-3">
+            {/* LOGO AUMENTADO UN 30% */}
             <MicroSmartLogo
-              className="h-[80px] sm:h-[110px] w-auto flex items-center"
+              className="h-[105px] sm:h-[140px] w-auto flex items-center"
               onClick={() => setActiveTab("home")}
             />
             <div className="flex space-x-1">
@@ -1292,12 +1322,13 @@ export default function App() {
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto pb-28 px-4 sm:px-6 pt-2 scrollbar-hide bg-slate-50/50 flex flex-col">
+        {/* CONTENEDOR DE SCROLL RESPONSIVO */}
+        <div className="flex-1 overflow-y-auto pb-36 sm:pb-40 px-4 sm:px-6 pt-2 scrollbar-hide bg-slate-50/50 flex flex-col">
           {/* ========================================================= */}
-          {/* TAB: INICIO (HOME) - AHORA MINIMALISTA                    */}
+          {/* TAB: INICIO (HOME) - DISEÑO LIMPIO Y ANTI-APLASTAMIENTO   */}
           {/* ========================================================= */}
           {activeTab === "home" && (
-            <div className="flex flex-col items-center py-4 sm:py-6 animate-in fade-in zoom-in duration-500 h-full">
+            <div className="flex flex-col items-center py-4 sm:py-6 animate-in fade-in zoom-in duration-500 min-h-full">
               <div
                 className={`inline-flex items-center space-x-2 px-3 sm:px-4 py-1.5 rounded-full text-[9px] sm:text-[10px] font-bold transition-all mb-6 sm:mb-8 ${
                   pairedDevices.length === 0
@@ -1329,6 +1360,7 @@ export default function App() {
                 </span>
               </div>
 
+              {/* Botón de Apertura Adaptativo */}
               <button
                 onClick={handleOpenDoor}
                 disabled={
@@ -1453,7 +1485,7 @@ export default function App() {
           {/* TAB: IA                                                   */}
           {/* ========================================================= */}
           {activeTab === "ai" && (
-            <div className="flex flex-col h-full animate-in slide-in-from-bottom-4 duration-500 bg-slate-50 -mx-4 sm:-mx-6 rounded-t-[2.5rem] overflow-hidden border-t border-slate-200">
+            <div className="flex flex-col min-h-full animate-in slide-in-from-bottom-4 duration-500 bg-slate-50 -mx-4 sm:-mx-6 rounded-t-[2.5rem] overflow-hidden border-t border-slate-200">
               <div className="p-4 bg-white border-b border-slate-100 flex justify-between items-center shadow-sm z-10 sticky top-0">
                 <div>
                   <h2 className="text-sm font-black text-slate-800 flex items-center">
@@ -1558,7 +1590,7 @@ export default function App() {
           {/* TAB: HISTORIAL                                            */}
           {/* ========================================================= */}
           {activeTab === "history" && (
-            <div className="animate-in fade-in slide-in-from-right-4 duration-500 py-4">
+            <div className="animate-in fade-in slide-in-from-right-4 duration-500 py-4 min-h-full">
               <div className="flex justify-between items-center mb-6">
                 <h2 className="text-lg sm:text-xl font-black text-slate-800 tracking-tight">
                   Registro
@@ -1654,7 +1686,7 @@ export default function App() {
           {/* TAB: RECADOS (AHORA CON BORRADO Y SELECCIÓN)              */}
           {/* ========================================================= */}
           {activeTab === "messages" && (
-            <div className="animate-in fade-in slide-in-from-right-4 duration-500 py-4">
+            <div className="animate-in fade-in slide-in-from-right-4 duration-500 py-4 min-h-full">
               <div className="flex justify-between items-center mb-6">
                 <h2 className="text-lg sm:text-xl font-black text-slate-800 tracking-tight">
                   Recados
@@ -1672,7 +1704,6 @@ export default function App() {
                 )}
               </div>
 
-              {/* Botón Flotante para borrar varios */}
               {isSelectingMessages && selectedMessages.length > 0 && (
                 <button
                   onClick={handleDeleteSelectedMessages}
@@ -1697,7 +1728,6 @@ export default function App() {
                       key={i}
                       className="relative bg-white p-4 sm:p-5 rounded-2xl sm:rounded-3xl shadow-md border-l-4 border-l-[#7bc100]"
                     >
-                      {/* ICONOS DE ACCIÓN (ESQUINA SUPERIOR DERECHA) */}
                       <div className="absolute top-4 right-4 flex items-center z-10">
                         {isSelectingMessages ? (
                           <button
@@ -1724,7 +1754,6 @@ export default function App() {
                         )}
                       </div>
 
-                      {/* CONTENIDO DEL RECADO */}
                       <div className="pr-10">
                         <div className="flex flex-col items-start mb-2">
                           <span className="text-[7px] sm:text-[8px] font-black text-[#00479b] tracking-tighter uppercase">
@@ -1769,7 +1798,7 @@ export default function App() {
           {/* TAB: AJUSTES (SETTINGS)                                   */}
           {/* ========================================================= */}
           {activeTab === "settings" && (
-            <div className="animate-in fade-in slide-in-from-right-4 duration-500 space-y-3 sm:space-y-4 py-4">
+            <div className="animate-in fade-in slide-in-from-right-4 duration-500 space-y-3 sm:space-y-4 py-4 min-h-full">
               <h2 className="text-lg sm:text-xl font-black text-slate-800 mb-4 sm:mb-6 tracking-tight">
                 Configuración
               </h2>
@@ -2013,8 +2042,11 @@ export default function App() {
           )}
         </div>
 
-        {/* --- NAVEGACIÓN INFERIOR --- */}
-        <div className="absolute bottom-2 sm:bottom-4 left-1/2 -translate-x-1/2 w-[96%] sm:w-[92%] bg-white/95 backdrop-blur-xl border border-white/50 px-1 sm:px-2 py-1.5 sm:py-2 flex justify-between items-center z-20 rounded-[2rem] shadow-[0_10px_40px_rgba(0,0,0,0.1)]">
+        {/* --- NAVEGACIÓN INFERIOR (FLOTANTE CON PROTECCIÓN DE iOS) --- */}
+        <div
+          className="absolute left-1/2 -translate-x-1/2 w-[96%] sm:w-[92%] bg-white/95 backdrop-blur-xl border border-white/50 px-1 sm:px-2 pt-1.5 sm:pt-2 pb-1.5 sm:pb-2 flex justify-between items-center z-20 rounded-[2rem] shadow-[0_10px_40px_rgba(0,0,0,0.1)]"
+          style={{ bottom: "calc(1rem + env(safe-area-inset-bottom, 0px))" }}
+        >
           <NavItem
             active={activeTab === "home"}
             onClick={() => setActiveTab("home")}
