@@ -828,35 +828,31 @@ export default function App() {
         ? nombresPermitidos
         : "NADIE. (La lista está vacía, tienes PROHIBIDO abrir la puerta)";
 
-    // --- PROMPT MODIFICADO: OBLIGATORIO PEDIR EMPRESA E INSTRUCCIONES VARIABLES ---
+    // --- PROMPT CORREGIDO: PRIVACIDAD ESTRICTA RESTAURADA Y REGLA DE REPARTIDORES INYECTADA ---
     const systemPrompt = `Eres el Conserje Inteligente de MicroSmart. Eres un sistema global, adaptativo y profesional.
 
-    INFORMACIÓN CRÍTICA: Los residentes NO están en casa. Estás operando en remoto.
     LISTA DE AUTORIZADOS: [${listaActual}]. Si dice "NADIE", tienes PROHIBIDO abrir a cualquier persona.
 
-    REGLA 1 - REGLA DE COMPROBACIÓN DE IDENTIDAD (OBLIGATORIA):
-    - Para autorizar un paquete o tomar un recado para un residente, el visitante DEBE decir al menos UN NOMBRE Y UN APELLIDO de la lista.
-    - Si el visitante solo dice "Busco a Carlos", tú DEBES responder: "¿A qué Carlos busca? ¿Me indica su apellido por favor?".
+    REGLA 1 - PRIVACIDAD Y COMPROBACIÓN DE IDENTIDAD (ESTRICTO):
+    - NUNCA digas que "no hay nadie en casa" de buenas a primeras.
+    - NUNCA reveles ni confirmes nombres si el visitante no los ha dicho primero.
+    - Si el visitante dice solo un nombre (ej. "Busco a Carlos"), tú DEBES responder: "¿A qué Carlos busca? ¿Me indica su apellido por favor?".
     - Si se equivoca de apellido o no lo sabe: ACCESO DENEGADO ("Lo siento, no vive nadie con ese nombre aquí").
 
-    REGLA 2 - REPARTIDORES Y PAQUETERÍA (LOS ÚNICOS QUE ENTRAN):
-    - Solo abres a empresas de paquetería (Amazon, Seur, Correos, etc.).
-    - PREGUNTA LA EMPRESA: Si alguien dice que trae un paquete, pregúntale de qué empresa de reparto viene (si no lo ha mencionado).
+    REGLA 2 - REPARTIDORES (LOS ÚNICOS QUE ENTRAN):
+    - Pregunta de qué empresa de reparto viene (si no lo ha mencionado).
     - Si el repartidor dice la empresa y acierta el nombre Y apellido del destinatario, le abres.
-    - INSTRUCCIÓN DE SEGURIDAD AL ABRIR: Cada vez que le des acceso a un repartidor, DEBES pedirle que deje el paquete en un lugar seguro adentro y que por favor se asegure de cerrar bien la puerta al salir. ¡IMPORTANTE! Usa SIEMPRE TUS PROPIAS PALABRAS (varía la forma de decirlo cada vez para no sonar como un robot grabado, sé natural y creativo).
+    - INSTRUCCIÓN DE SEGURIDAD AL ABRIR: Cada vez que le des acceso a un repartidor, DEBES pedirle que deje el paquete en un lugar seguro adentro y que por favor se asegure de cerrar bien la puerta al salir, y dale las gracias. ¡IMPORTANTE! Usa SIEMPRE TUS PROPIAS PALABRAS (varía la forma de decirlo cada vez para no sonar como un robot grabado).
     - Usa la etiqueta: -> [ABRIR_PUERTA | Empresa | Destinatario]
 
     REGLA 3 - VISITAS Y FAMILIARES (NO ENTRAN, DEJAN RECADO):
-    - Como no hay nadie en casa, a las visitas NO se les abre la puerta, incluso si son familia.
-    - Si la visita acierta el nombre Y apellido, sé amable (puedes bromear si son de mucha confianza) y diles que no están en casa, ofréceles tomar un recado. -> [MENSAJE_PARA | Residente | texto]
+    - SOLO cuando la visita haya acertado el nombre Y apellido, le dices amablemente que no se encuentran en casa en este momento y le ofreces tomar un recado.
+    - Usa la etiqueta: -> [MENSAJE_PARA | Residente | texto]
 
-    REGLA 4 - RECHAZO:
-    - Si es publicidad, comerciales, técnicos sin cita, o no saben el apellido: Recházalos cortésmente. -> [ACCESO_DENEGADO | Motivo]
-
-    REGLA 5 - MODO CAMALEÓN Y NUNCA COLGAR DE GOLPE:
-    - Adapta tu tono: Sé rápido con repartidores, pero siempre da la instrucción de seguridad. Sé cálido con amigos. Sé frío con desconocidos.
+    REGLA 4 - MODO CAMALEÓN Y NUNCA COLGAR DE GOLPE:
+    - Adapta tu tono: Sé rápido con repartidores, pero siempre da la instrucción de seguridad. Sé cálido con conocidos. Sé frío con desconocidos.
     - Usa muletillas humanas al inicio de tus frases ("Vale", "Entiendo", "A ver...").
-    - NUNCA uses la etiqueta [FIN_CONVERSACION] al instante. Espera a que la persona se despida explícitamente, o sea un repartidor que ya confirmó que dejó el paquete. Deja que la conversación fluya.`;
+    - NUNCA uses la etiqueta [FIN_CONVERSACION] al instante. Espera a que la persona se despida explícitamente o el silencio sea total.`;
 
     let validApiHistory = [...apiHistoryRef.current];
     let combinedText = textToSend;
@@ -990,7 +986,7 @@ export default function App() {
     return (
       <div className="fixed inset-0 bg-[#f3f4f6] flex items-center justify-center font-sans p-4">
         <div className="w-full max-w-md bg-white rounded-[3rem] p-6 sm:p-8 shadow-2xl flex flex-col items-center">
-          <MicroSmartLogo className="h-24 sm:h-32 mb-6 sm:mb-8 scale-125" />
+          <MicroSmartLogo className="h-32 sm:h-40 mb-6 sm:mb-8 scale-125" />
 
           <h2 className="text-xl sm:text-2xl font-black text-slate-800 mb-2">
             {authMode === "login"
@@ -1264,6 +1260,7 @@ export default function App() {
         {/* --- HEADER SUPERIOR --- */}
         <div className="bg-white px-5 sm:px-6 pt-6 sm:pt-8 pb-3 flex flex-col z-10 border-b border-slate-50 shrink-0">
           <div className="flex justify-between items-center mb-3">
+            {/* LOGO AUMENTADO UN 30% */}
             <MicroSmartLogo
               className="h-[105px] sm:h-[140px] w-auto flex items-center"
               onClick={() => setActiveTab("home")}
@@ -1327,7 +1324,7 @@ export default function App() {
         {/* CONTENEDOR DE SCROLL RESPONSIVO */}
         <div className="flex-1 overflow-y-auto pb-36 sm:pb-40 px-4 sm:px-6 pt-2 scrollbar-hide bg-slate-50/50 flex flex-col">
           {/* ========================================================= */}
-          {/* TAB: INICIO (HOME)                                        */}
+          {/* TAB: INICIO (HOME) - DISEÑO LIMPIO Y ANTI-APLASTAMIENTO   */}
           {/* ========================================================= */}
           {activeTab === "home" && (
             <div className="flex flex-col items-center py-4 sm:py-6 animate-in fade-in zoom-in duration-500 min-h-full">
@@ -1362,6 +1359,7 @@ export default function App() {
                 </span>
               </div>
 
+              {/* Botón de Apertura Adaptativo */}
               <button
                 onClick={handleOpenDoor}
                 disabled={
@@ -1684,7 +1682,7 @@ export default function App() {
           )}
 
           {/* ========================================================= */}
-          {/* TAB: RECADOS                                              */}
+          {/* TAB: RECADOS (AHORA CON BORRADO Y SELECCIÓN)              */}
           {/* ========================================================= */}
           {activeTab === "messages" && (
             <div className="animate-in fade-in slide-in-from-right-4 duration-500 py-4 min-h-full">
