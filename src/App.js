@@ -37,6 +37,10 @@ import {
   Plus,
   Edit2,
   Trash2,
+  ChevronDown,
+  ChevronUp,
+  LifeBuoy,
+  Info,
 } from "lucide-react";
 
 import { initializeApp } from "firebase/app";
@@ -180,6 +184,11 @@ export default function App() {
   const [isEditingName, setIsEditingName] = useState(false);
   const [tempName, setTempName] = useState("");
 
+  // ESTADOS PARA LOS ACORDEONES DE CONFIGURACIÓN
+  const [showDevices, setShowDevices] = useState(false);
+  const [showPersons, setShowPersons] = useState(false);
+  const [showSupport, setShowSupport] = useState(false);
+
   const isFluidModeRef = useRef(false);
   const isProcessingRef = useRef(false);
   const isSpeakingRef = useRef(false);
@@ -312,7 +321,6 @@ export default function App() {
       await push(ref(db, `users/${currentUser.uid}/history`), newLog);
   };
   const saveMessage = async (newMessage) => {
-    // Filtro antimensajes fantasmas
     if (!newMessage.content || newMessage.content.trim() === "") return;
     if (currentUser)
       await push(ref(db, `users/${currentUser.uid}/messages`), newMessage);
@@ -506,7 +514,6 @@ export default function App() {
   const resetSilenceTimer = () => {
     if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
     if (isFluidModeRef.current) {
-      // Ampliado a 10 segundos para dar tiempo de respuesta
       silenceTimerRef.current = setTimeout(() => {
         if (
           isFluidModeRef.current &&
@@ -567,6 +574,30 @@ export default function App() {
       setActivitySummary("Error: " + e.message);
     } finally {
       setIsSummarizing(false);
+    }
+  };
+
+  const handleDraftReply = async (message) => {
+    if (!apiKey) return alert("Falta configurar la clave API.");
+    setDraftingId(message.id);
+    const prompt = `Redacta una respuesta de WhatsApp muy corta y amable para este recado: "${message.content}"`;
+    try {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${aiModel}:generateContent?key=${apiKey}`;
+      const response = await fetchWithRetry(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
+      });
+      const draft = response.candidates?.[0]?.content?.parts?.[0]?.text;
+      const whatsappUrl = `https://wa.me/${message.phone.replace(
+        /\D/g,
+        ""
+      )}?text=${encodeURIComponent(draft.trim())}`;
+      window.open(whatsappUrl, "_blank");
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setDraftingId(null);
     }
   };
 
@@ -743,7 +774,6 @@ export default function App() {
         ? nombresPermitidos
         : "NADIE. (La lista está vacía, tienes PROHIBIDO abrir la puerta)";
 
-    // --- NUEVO PROMPT REESTRUCTURADO Y BLINDADO ---
     const systemPrompt = `Eres el Conserje Inteligente de MicroSmart. Eres un sistema global, adaptativo y profesional.
 
     INFORMACIÓN CRÍTICA: Los residentes NO están en casa. Estás operando en remoto.
@@ -1023,7 +1053,7 @@ export default function App() {
 
   return (
     <div className="fixed inset-0 w-screen h-[100dvh] bg-[#f3f4f6] flex items-center justify-center font-sans text-slate-900 overflow-hidden">
-      {/* 1. MODAL BLUETOOTH */}
+      {/* MODALES DE CONEXIÓN... (Sin cambios) */}
       {wifiModalOpen && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl p-6 w-full max-w-sm shadow-2xl animate-in zoom-in duration-300">
@@ -1092,7 +1122,6 @@ export default function App() {
         </div>
       )}
 
-      {/* 2. MODAL "ANTI-TONTOS" PARA iOS CON "LLAVE DE SEGURIDAD" */}
       {showiOSModal && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl p-6 w-full max-w-sm shadow-2xl animate-in zoom-in duration-300 flex flex-col items-center">
@@ -1335,7 +1364,6 @@ export default function App() {
               </button>
 
               <div className="grid grid-cols-2 gap-4 w-full mt-auto mb-4 px-2">
-                {/* TARJETA 1: CONSERJE IA */}
                 <div
                   onClick={() => setActiveTab("ai")}
                   className="bg-white p-4 rounded-3xl shadow-sm border border-slate-100 flex flex-col cursor-pointer hover:shadow-md transition-all active:scale-95"
@@ -1375,9 +1403,11 @@ export default function App() {
                   </p>
                 </div>
 
-                {/* TARJETA 2: NUEVO DISPOSITIVO */}
                 <div
-                  onClick={iniciarConexionBluetooth}
+                  onClick={() => {
+                    setActiveTab("settings");
+                    setShowDevices(true);
+                  }}
                   className="bg-white p-4 rounded-3xl shadow-sm border border-slate-100 flex flex-col cursor-pointer hover:shadow-md transition-all active:scale-95 group"
                 >
                   <div className="flex justify-between items-start mb-3">
@@ -1393,9 +1423,11 @@ export default function App() {
                   </p>
                 </div>
 
-                {/* TARJETA 3: PERSONAS AUTORIZADAS (Ancho completo) */}
                 <div
-                  onClick={() => setActiveTab("settings")}
+                  onClick={() => {
+                    setActiveTab("settings");
+                    setShowPersons(true);
+                  }}
                   className="col-span-2 bg-white p-4 rounded-3xl shadow-sm border border-slate-100 flex flex-row items-center cursor-pointer hover:shadow-md transition-all active:scale-95 group"
                 >
                   <div className="p-2 rounded-xl bg-slate-50 text-slate-600 group-hover:bg-[#00479b] group-hover:text-white transition-colors mr-4">
@@ -1414,6 +1446,9 @@ export default function App() {
             </div>
           )}
 
+          {/* ========================================================= */}
+          {/* TABS: IA, HISTORIAL, MENSAJES (Sin cambios visuales)      */}
+          {/* ========================================================= */}
           {activeTab === "ai" && (
             <div className="flex flex-col h-full animate-in slide-in-from-bottom-4 duration-500 bg-slate-50 -mx-6 rounded-t-[2.5rem] overflow-hidden border-t border-slate-200">
               <div className="p-4 bg-white border-b border-slate-100 flex justify-between items-center shadow-sm z-10 sticky top-0">
@@ -1441,7 +1476,6 @@ export default function App() {
                   ></div>
                 </button>
               </div>
-
               <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
                 {!aiEnabled && (
                   <div className="flex justify-center my-4">
@@ -1485,7 +1519,6 @@ export default function App() {
                 )}
                 <div ref={chatEndRef} />
               </div>
-
               <div className="p-4 bg-white border-t border-slate-100">
                 <div className="flex flex-col items-center space-y-4">
                   <button
@@ -1673,137 +1706,246 @@ export default function App() {
           )}
 
           {/* ========================================================= */}
-          {/* TAB: AJUSTES (SETTINGS)                                   */}
+          {/* TAB: AJUSTES (SETTINGS) - REDISEÑO ACORDEÓN               */}
           {/* ========================================================= */}
           {activeTab === "settings" && (
-            <div className="animate-in fade-in slide-in-from-right-4 duration-500 space-y-5 py-4">
+            <div className="animate-in fade-in slide-in-from-right-4 duration-500 space-y-4 py-4">
               <h2 className="text-xl font-black text-slate-800 mb-6 tracking-tight">
                 Configuración
               </h2>
 
-              {/* MÓDULO IOT: VINCULAR DISPOSITIVOS */}
-              <div className="bg-gradient-to-br from-slate-800 to-slate-900 rounded-3xl p-5 shadow-lg">
-                <div className="flex items-center space-x-3 text-white mb-4">
-                  <Smartphone size={18} className="text-[#7bc100]" />
-                  <h3 className="font-bold text-sm">Tus Equipos</h3>
-                </div>
-
-                {pairedDevices.length > 0 ? (
-                  <div className="space-y-3 mb-4">
-                    {pairedDevices.map((dev, idx) => (
-                      <div
-                        key={idx}
-                        className="bg-slate-800/50 border border-slate-700 p-3 rounded-xl flex justify-between items-center group"
-                      >
-                        <div>
-                          <span className="text-white font-bold text-xs block">
-                            {dev}
-                          </span>
-                          {deviceOnline ? (
-                            <span className="text-[#7bc100] text-[9px] font-bold flex items-center">
-                              <span className="w-1.5 h-1.5 rounded-full bg-[#7bc100] mr-1"></span>
-                              En línea
-                            </span>
-                          ) : (
-                            <span className="text-red-400 text-[9px] font-bold flex items-center">
-                              <span className="w-1.5 h-1.5 rounded-full bg-red-400 mr-1"></span>
-                              Desconectado
-                            </span>
-                          )}
-                        </div>
-                        <button
-                          onClick={() => handleRemoveDevice(dev)}
-                          className="p-2 text-slate-400 hover:text-red-400 transition-colors hover:bg-slate-700 rounded-lg"
-                          title="Eliminar y formatear equipo"
-                        >
-                          <Trash2 size={18} />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="text-center py-4 bg-slate-800/50 rounded-xl mb-4 border border-slate-700">
-                    <p className="text-slate-400 text-xs font-bold">
-                      No hay dispositivos en tu hogar
-                    </p>
-                  </div>
-                )}
-
+              {/* ACORDEÓN 1: TUS EQUIPOS */}
+              <div className="bg-white rounded-3xl shadow-sm border border-slate-100 overflow-hidden transition-all">
                 <button
-                  onClick={iniciarConexionBluetooth}
-                  disabled={isPairing}
-                  className="w-full bg-[#00479b] hover:bg-blue-600 text-white font-bold py-3.5 rounded-xl text-xs flex items-center justify-center transition-all shadow-xl active:scale-95"
+                  onClick={() => setShowDevices(!showDevices)}
+                  className="w-full flex justify-between items-center p-5 bg-white hover:bg-slate-50 transition-colors"
                 >
-                  {isPairing ? (
-                    <span className="animate-pulse flex items-center">
-                      <Bluetooth size={16} className="mr-2" /> Escaneando...
-                    </span>
+                  <div className="flex items-center space-x-3">
+                    <div className="p-2 bg-slate-100 rounded-xl text-[#00479b]">
+                      <Smartphone size={18} />
+                    </div>
+                    <h3 className="font-bold text-slate-800 text-sm">
+                      Tus Equipos
+                    </h3>
+                  </div>
+                  {showDevices ? (
+                    <ChevronUp size={20} className="text-slate-400" />
                   ) : (
-                    <>
-                      <Plus size={16} className="mr-2" /> Añadir otro equipo
-                    </>
+                    <ChevronDown size={20} className="text-slate-400" />
                   )}
                 </button>
+                <div
+                  className={`transition-all duration-300 ease-in-out ${
+                    showDevices
+                      ? "max-h-[800px] opacity-100"
+                      : "max-h-0 opacity-0"
+                  } overflow-hidden`}
+                >
+                  <div className="p-5 pt-0 border-t border-slate-50">
+                    {pairedDevices.length > 0 ? (
+                      <div className="space-y-3 mb-4 mt-4">
+                        {pairedDevices.map((dev, idx) => (
+                          <div
+                            key={idx}
+                            className="bg-slate-50 border border-slate-200 p-3 rounded-xl flex justify-between items-center group"
+                          >
+                            <div>
+                              <span className="text-slate-800 font-bold text-xs block">
+                                {dev}
+                              </span>
+                              {deviceOnline ? (
+                                <span className="text-[#7bc100] text-[9px] font-bold flex items-center">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-[#7bc100] mr-1"></span>
+                                  En línea
+                                </span>
+                              ) : (
+                                <span className="text-red-400 text-[9px] font-bold flex items-center">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-red-400 mr-1"></span>
+                                  Desconectado
+                                </span>
+                              )}
+                            </div>
+                            <button
+                              onClick={() => handleRemoveDevice(dev)}
+                              className="p-2 text-slate-400 hover:text-red-500 transition-colors hover:bg-red-50 rounded-lg"
+                              title="Eliminar y formatear equipo"
+                            >
+                              <Trash2 size={18} />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="text-center py-6 bg-slate-50 rounded-xl mb-4 mt-4 border border-slate-100">
+                        <p className="text-slate-400 text-xs font-bold">
+                          No hay dispositivos en tu hogar
+                        </p>
+                      </div>
+                    )}
+                    <button
+                      onClick={iniciarConexionBluetooth}
+                      disabled={isPairing}
+                      className="w-full bg-[#00479b] hover:bg-blue-800 text-white font-bold py-3.5 rounded-xl text-xs flex items-center justify-center transition-all shadow-lg active:scale-95"
+                    >
+                      {isPairing ? (
+                        <span className="animate-pulse flex items-center">
+                          <Bluetooth size={16} className="mr-2" /> Escaneando...
+                        </span>
+                      ) : (
+                        <>
+                          <Plus size={16} className="mr-2" /> Añadir otro equipo
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
               </div>
 
-              {/* MÓDULO USUARIOS AUTORIZADOS */}
-              <div className="bg-white rounded-3xl p-5 shadow-sm border border-slate-100">
-                <div className="flex items-center space-x-3 mb-4">
-                  <UserPlus size={18} className="text-[#00479b]" />
-                  <h3 className="font-bold text-slate-800 text-sm">
-                    Personas Autorizadas
-                  </h3>
+              {/* ACORDEÓN 2: PERSONAS AUTORIZADAS */}
+              <div className="bg-white rounded-3xl shadow-sm border border-slate-100 overflow-hidden transition-all">
+                <button
+                  onClick={() => setShowPersons(!showPersons)}
+                  className="w-full flex justify-between items-center p-5 bg-white hover:bg-slate-50 transition-colors"
+                >
+                  <div className="flex items-center space-x-3">
+                    <div className="p-2 bg-slate-100 rounded-xl text-[#00479b]">
+                      <UserPlus size={18} />
+                    </div>
+                    <h3 className="font-bold text-slate-800 text-sm">
+                      Personas Autorizadas
+                    </h3>
+                  </div>
+                  {showPersons ? (
+                    <ChevronUp size={20} className="text-slate-400" />
+                  ) : (
+                    <ChevronDown size={20} className="text-slate-400" />
+                  )}
+                </button>
+                <div
+                  className={`transition-all duration-300 ease-in-out ${
+                    showPersons
+                      ? "max-h-[800px] opacity-100"
+                      : "max-h-0 opacity-0"
+                  } overflow-hidden`}
+                >
+                  <div className="p-5 pt-0 border-t border-slate-50">
+                    <div className="space-y-2 mb-4 mt-4">
+                      {authorizedNames.length === 0 && (
+                        <p className="text-center text-[10px] text-slate-400 font-bold py-2">
+                          La lista está vacía. Nadie puede entrar.
+                        </p>
+                      )}
+                      {authorizedNames.map((person, index) => (
+                        <div
+                          key={index}
+                          className="flex justify-between items-center bg-slate-50 p-2.5 rounded-xl border border-slate-200"
+                        >
+                          <div className="overflow-hidden">
+                            <span className="text-xs font-bold text-slate-700 block truncate">
+                              {person.name}
+                            </span>
+                            <span className="text-[9px] text-slate-400 font-bold">
+                              {person.phone}
+                            </span>
+                          </div>
+                          <button
+                            onClick={() => handleRemoveName(person.name)}
+                            className="text-red-400 p-2 hover:bg-red-50 rounded-lg"
+                          >
+                            <X size={16} />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="space-y-2">
+                      <input
+                        type="text"
+                        value={newName}
+                        onChange={(e) => setNewName(e.target.value)}
+                        placeholder="Nombre completo"
+                        className="w-full bg-slate-50 border border-slate-200 text-base text-slate-800 rounded-lg px-3 py-2.5 focus:outline-none"
+                      />
+                      <div className="flex space-x-2">
+                        <div className="flex-1 bg-slate-50 border border-slate-200 rounded-lg flex items-center px-3">
+                          <span className="text-slate-400 text-sm font-bold pr-2 mr-2 border-r border-slate-200">
+                            +34
+                          </span>
+                          <input
+                            type="tel"
+                            value={newPhone}
+                            onChange={(e) => setNewPhone(e.target.value)}
+                            placeholder="Teléfono"
+                            className="bg-transparent text-base text-slate-800 w-full py-2.5 focus:outline-none"
+                          />
+                        </div>
+                        <button
+                          onClick={handleAddName}
+                          className="bg-[#00479b] text-white px-4 rounded-lg text-xs font-bold shadow-lg active:scale-95 transition-all"
+                        >
+                          OK
+                        </button>
+                      </div>
+                    </div>
+                  </div>
                 </div>
-                <div className="space-y-2 mb-4">
-                  {authorizedNames.map((person, index) => (
-                    <div
-                      key={index}
-                      className="flex justify-between items-center bg-slate-50 p-2.5 rounded-xl border border-slate-100"
-                    >
-                      <div className="overflow-hidden">
-                        <span className="text-xs font-bold text-slate-700 block truncate">
-                          {person.name}
+              </div>
+
+              {/* ACORDEÓN 3: SOPORTE Y AYUDA (PREMIUM UI) */}
+              <div className="bg-white rounded-3xl shadow-sm border border-slate-100 overflow-hidden transition-all">
+                <button
+                  onClick={() => setShowSupport(!showSupport)}
+                  className="w-full flex justify-between items-center p-5 bg-white hover:bg-slate-50 transition-colors"
+                >
+                  <div className="flex items-center space-x-3">
+                    <div className="p-2 bg-slate-100 rounded-xl text-[#00479b]">
+                      <LifeBuoy size={18} />
+                    </div>
+                    <h3 className="font-bold text-slate-800 text-sm">
+                      Soporte MicroSmart
+                    </h3>
+                  </div>
+                  {showSupport ? (
+                    <ChevronUp size={20} className="text-slate-400" />
+                  ) : (
+                    <ChevronDown size={20} className="text-slate-400" />
+                  )}
+                </button>
+                <div
+                  className={`transition-all duration-300 ease-in-out ${
+                    showSupport
+                      ? "max-h-[800px] opacity-100"
+                      : "max-h-0 opacity-0"
+                  } overflow-hidden`}
+                >
+                  <div className="p-5 pt-4 border-t border-slate-50 flex flex-col space-y-4">
+                    <button className="flex items-center justify-between p-3 bg-slate-50 rounded-xl hover:bg-slate-100 transition-colors text-left">
+                      <div>
+                        <span className="block text-xs font-bold text-slate-800">
+                          Centro de Ayuda
                         </span>
-                        <span className="text-[9px] text-slate-400 font-bold">
-                          {person.phone}
+                        <span className="block text-[10px] text-slate-500">
+                          Preguntas frecuentes y tutoriales
                         </span>
                       </div>
-                      <button
-                        onClick={() => handleRemoveName(person.name)}
-                        className="text-red-400 p-2 hover:bg-red-50 rounded-lg"
-                      >
-                        <X size={16} />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-                <div className="space-y-2">
-                  <input
-                    type="text"
-                    value={newName}
-                    onChange={(e) => setNewName(e.target.value)}
-                    placeholder="Nombre completo"
-                    className="w-full bg-slate-50 border border-slate-200 text-base text-slate-800 rounded-lg px-3 py-2.5 focus:outline-none"
-                  />
-                  <div className="flex space-x-2">
-                    <div className="flex-1 bg-slate-50 border border-slate-200 rounded-lg flex items-center px-3">
-                      <span className="text-slate-400 text-sm font-bold pr-2 mr-2 border-r border-slate-200">
-                        +34
-                      </span>
-                      <input
-                        type="tel"
-                        value={newPhone}
-                        onChange={(e) => setNewPhone(e.target.value)}
-                        placeholder="Teléfono"
-                        className="bg-transparent text-base text-slate-800 w-full py-2.5 focus:outline-none"
-                      />
-                    </div>
-                    <button
-                      onClick={handleAddName}
-                      className="bg-[#00479b] text-white px-4 rounded-lg text-xs font-bold shadow-lg shadow-blue-900/20 active:scale-95 transition-all"
-                    >
-                      OK
+                      <ChevronRight size={16} className="text-slate-400" />
                     </button>
+                    <button className="flex items-center justify-between p-3 bg-slate-50 rounded-xl hover:bg-slate-100 transition-colors text-left">
+                      <div>
+                        <span className="block text-xs font-bold text-slate-800">
+                          Contactar Asistencia
+                        </span>
+                        <span className="block text-[10px] text-slate-500">
+                          Habla con un técnico por WhatsApp
+                        </span>
+                      </div>
+                      <PhoneForwarded size={16} className="text-[#00479b]" />
+                    </button>
+                    <div className="pt-2 flex flex-col items-center justify-center">
+                      <MicroSmartLogo className="h-6 opacity-50 mb-1" />
+                      <span className="text-[9px] font-bold text-slate-400">
+                        MicroSmart OS v1.0 (Stable)
+                      </span>
+                    </div>
                   </div>
                 </div>
               </div>
