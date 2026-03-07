@@ -113,7 +113,6 @@ const getCurrentTime = () => {
   });
 };
 
-// --- TRADUCTOR DE ERRORES DE FIREBASE ---
 const getFriendlyAuthError = (errorMsg) => {
   const msg = errorMsg.toLowerCase();
   if (msg.includes("invalid-email"))
@@ -167,7 +166,6 @@ export default function App() {
   const [activitySummary, setActivitySummary] = useState("");
   const [draftingId, setDraftingId] = useState(null);
 
-  // --- NUEVOS ESTADOS DE CONTROL ---
   const [aiEnabled, setAiEnabled] = useState(true);
   const [deviceOnline, setDeviceOnline] = useState(false);
 
@@ -179,6 +177,7 @@ export default function App() {
   const apiHistoryRef = useRef([]);
   const authorizedNamesRef = useRef(authorizedNames);
   const chatEndRef = useRef(null);
+  const lastBeatRef = useRef(Date.now()); // Referencia para el vigilante
 
   const [chatHistory, setChatHistory] = useState([
     {
@@ -237,17 +236,30 @@ export default function App() {
         );
       });
 
-      // NUEVO: Escuchar el estado online del dispositivo en tiempo real
-      onValue(ref(db, `users/${uid}/puerta/online`), (s) => {
-        setDeviceOnline(s.val() === "ONLINE");
+      // SISTEMA DE RECEPCIÓN DEL LATIDO
+      onValue(ref(db, `users/${uid}/puerta/heartbeat`), (s) => {
+        if (s.exists()) {
+          lastBeatRef.current = Date.now();
+          setDeviceOnline(true);
+        }
       });
 
-      // NUEVO: Escuchar si el usuario tiene activada o pausada la IA
       onValue(ref(db, `users/${uid}/settings/aiEnabled`), (s) => {
         if (s.exists()) setAiEnabled(s.val());
       });
     }
   }, [currentUser]);
+
+  // --- VIGILANTE DEL LATIDO ---
+  useEffect(() => {
+    const checker = setInterval(() => {
+      // Si pasan más de 12 segundos sin noticias, asumimos que se cortó la luz
+      if (Date.now() - lastBeatRef.current > 12000) {
+        setDeviceOnline(false);
+      }
+    }, 3000);
+    return () => clearInterval(checker);
+  }, []);
 
   useEffect(() => {
     authorizedNamesRef.current = authorizedNames;
@@ -276,7 +288,6 @@ export default function App() {
         setAuthMessage("Revisa tu correo para cambiar la contraseña.");
       }
     } catch (error) {
-      // USAMOS NUESTRO TRADUCTOR DE ERRORES AQUÍ
       setAuthError(getFriendlyAuthError(error.message));
     } finally {
       setAuthLoading(false);
@@ -441,7 +452,6 @@ export default function App() {
     }
   };
 
-  // --- LÓGICA DE IA Y VOZ ---
   const resetSilenceTimer = () => {
     if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
     if (isFluidModeRef.current) {
@@ -634,7 +644,7 @@ export default function App() {
   };
 
   const toggleFluidMode = () => {
-    if (!aiEnabled) return; // Si la IA está apagada, no hacemos nada
+    if (!aiEnabled) return;
     if (isFluidModeRef.current) {
       stopFluidMode();
     } else {
