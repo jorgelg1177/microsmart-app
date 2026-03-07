@@ -172,7 +172,6 @@ export default function App() {
   const [isFluidMode, setIsFluidMode] = useState(false);
   const [isSummarizing, setIsSummarizing] = useState(false);
   const [activitySummary, setActivitySummary] = useState("");
-  const [draftingId, setDraftingId] = useState(null);
 
   const [aiEnabled, setAiEnabled] = useState(true);
   const [deviceOnline, setDeviceOnline] = useState(false);
@@ -313,6 +312,8 @@ export default function App() {
       await push(ref(db, `users/${currentUser.uid}/history`), newLog);
   };
   const saveMessage = async (newMessage) => {
+    // Filtro antimensajes fantasmas
+    if (!newMessage.content || newMessage.content.trim() === "") return;
     if (currentUser)
       await push(ref(db, `users/${currentUser.uid}/messages`), newMessage);
   };
@@ -327,7 +328,6 @@ export default function App() {
     }
   };
 
-  // --- NUEVA LÓGICA: BORRADO REMOTO (REMOTE WIPE) ---
   const handleRemoveDevice = async (deviceNameToRemove) => {
     if (!currentUser) return;
     const isConfirmed = window.confirm(
@@ -335,19 +335,14 @@ export default function App() {
     );
     if (isConfirmed) {
       try {
-        // 1. Enviamos el comando de autodestrucción al ESP32
         await set(ref(db, `users/${currentUser.uid}/puerta/estado`), "RESET");
       } catch (e) {
         console.error("Error enviando comando reset", e);
       }
-
-      // 2. Lo borramos de la lista en la App
       const updatedDevices = pairedDevices.filter(
         (dev) => dev !== deviceNameToRemove
       );
       await set(ref(db, `users/${currentUser.uid}/devices`), updatedDevices);
-
-      // 3. Dejamos constancia en el registro
       saveToHistory({
         id: Date.now(),
         type: "system",
@@ -511,6 +506,7 @@ export default function App() {
   const resetSilenceTimer = () => {
     if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
     if (isFluidModeRef.current) {
+      // Ampliado a 10 segundos para dar tiempo de respuesta
       silenceTimerRef.current = setTimeout(() => {
         if (
           isFluidModeRef.current &&
@@ -518,7 +514,7 @@ export default function App() {
           !isSpeakingRef.current
         ) {
           speakResponse(
-            "Parece que no hay nadie. Me retiro, que tenga un excelente día.",
+            "Veo que no hay más que decir, me retiro. Que tenga un buen día.",
             true
           );
           setChatHistory((prev) => [
@@ -526,11 +522,11 @@ export default function App() {
             {
               role: "ai",
               content:
-                "Parece que no hay nadie. Me retiro, que tenga un excelente día. [Llamada finalizada por inactividad]",
+                "Veo que no hay más que decir, me retiro. Que tenga un buen día. [Llamada finalizada por inactividad]",
             },
           ]);
         }
-      }, 15000);
+      }, 10000);
     }
   };
 
@@ -571,30 +567,6 @@ export default function App() {
       setActivitySummary("Error: " + e.message);
     } finally {
       setIsSummarizing(false);
-    }
-  };
-
-  const handleDraftReply = async (message) => {
-    if (!apiKey) return alert("Falta configurar la clave API.");
-    setDraftingId(message.id);
-    const prompt = `Redacta una respuesta de WhatsApp muy corta y amable para este recado: "${message.content}"`;
-    try {
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/${aiModel}:generateContent?key=${apiKey}`;
-      const response = await fetchWithRetry(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
-      });
-      const draft = response.candidates?.[0]?.content?.parts?.[0]?.text;
-      const whatsappUrl = `https://wa.me/${message.phone.replace(
-        /\D/g,
-        ""
-      )}?text=${encodeURIComponent(draft.trim())}`;
-      window.open(whatsappUrl, "_blank");
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setDraftingId(null);
     }
   };
 
@@ -771,29 +743,32 @@ export default function App() {
         ? nombresPermitidos
         : "NADIE. (La lista está vacía, tienes PROHIBIDO abrir la puerta)";
 
-    const systemPrompt = `Eres el Conserje Inteligente desarrollado por la empresa MicroSmart.
-    IMPORTANTE SOBRE TU IDENTIDAD: MicroSmart es una empresa tecnológica líder en domótica y sistemas autónomos.
-    Tú eres uno de sus productos, instalado para proteger esta vivienda privada. La casa NO se llama MicroSmart.
+    // --- NUEVO PROMPT REESTRUCTURADO Y BLINDADO ---
+    const systemPrompt = `Eres el Conserje Inteligente de MicroSmart. Eres un sistema global, adaptativo y profesional.
 
-    REGLA 1 - SEGURIDAD IMPENETRABLE Y LISTA DE ACCESO:
-    ESTA ES TU LISTA DE RESIDENTES AUTORIZADOS EN ESTE MOMENTO: [${listaActual}].
-    - Si la lista dice "NADIE", tienes absolutamente PROHIBIDO abrir la puerta a nadie, sin excepciones.
-    - Si el visitante busca a alguien que NO está exactamente en esa lista, el acceso es DENEGADO.
-    - PRIVACIDAD: NUNCA reveles ni confirmes nombres si el visitante no los ha dicho primero. 
-    - COMPROBACIÓN: Si el visitante dice un nombre de la lista, debes pedirle el APELLIDO para confirmar. Si no se sabe el apellido o no coincide con la lista, DENEGADO.
+    INFORMACIÓN CRÍTICA: Los residentes NO están en casa. Estás operando en remoto.
+    LISTA DE AUTORIZADOS: [${listaActual}]. Si dice "NADIE", tienes PROHIBIDO abrir a cualquier persona.
 
-    REGLA 2 - MODO CAMALEÓN Y NATURALIDAD (CERO ROBOT):
-    - Usa muletillas humanas al inicio de tus frases: "Vale", "Entiendo", "A ver...", "De acuerdo", "Perfecto", "Un segundo".
-    - NO repitas "por favor" o "gracias" en cada frase. Úsalas esporádicamente para que suene natural.
-    - Si el visitante tiene prisa (ej. "¡Amazon!", "Paquete"): Sé rápido y directo. Si está tranquilo, sé cálido.
+    REGLA 1 - REGLA DE COMPROBACIÓN DE IDENTIDAD (OBLIGATORIA):
+    - Para autorizar un paquete o tomar un recado para un residente, el visitante DEBE decir al menos UN NOMBRE Y UN APELLIDO de la lista.
+    - Si el visitante solo dice "Busco a Carlos", tú DEBES responder: "¿A qué Carlos busca? ¿Me indica su apellido por favor?".
+    - Si se equivoca de apellido o no lo sabe: ACCESO DENEGADO ("Lo siento, no vive nadie con ese nombre aquí").
 
-    PROTOCOLOS ESTRICTOS DE SALIDA (Usa SIEMPRE las etiquetas al final de tu respuesta):
-    - ACCESO AUTORIZADO (Solo si pasó todas las pruebas de la regla 1): -> [ABRIR_PUERTA | Empresa/Visita | Destinatario]
-    - RECADOS (Si no está en la lista o no sabe el apellido): "Lo siento, no le puedo abrir. Si quiere déjeme un recado y se lo paso." -> [MENSAJE_PARA | Desconocido | texto]
-    - RECHAZO DIRECTO: [ACCESO_DENEGADO | Motivo]
+    REGLA 2 - REPARTIDORES Y PAQUETERÍA (LOS ÚNICOS QUE ENTRAN):
+    - Solo abres a empresas de paquetería (Amazon, Seur, Correos, etc.).
+    - Si el repartidor acierta el nombre Y apellido del destinatario, le abres. -> [ABRIR_PUERTA | Repartidor | Destinatario]
 
-    REGLA DE AUTO-COLGADO:
-    Añade la etiqueta [FIN_CONVERSACION] ÚNICAMENTE cuando la conversación termine de forma natural.`;
+    REGLA 3 - VISITAS Y FAMILIARES (NO ENTRAN, DEJAN RECADO):
+    - Como no hay nadie en casa, a las visitas NO se les abre la puerta, incluso si son familia.
+    - Si la visita acierta el nombre Y apellido, sé amable (puedes bromear si son de mucha confianza) y diles que no están en casa, ofréceles tomar un recado. -> [MENSAJE_PARA | Residente | texto]
+
+    REGLA 4 - RECHAZO:
+    - Si es publicidad, comerciales, técnicos sin cita, o no saben el apellido: Recházalos cortésmente. -> [ACCESO_DENEGADO | Motivo]
+
+    REGLA 5 - MODO CAMALEÓN Y NUNCA COLGAR DE GOLPE:
+    - Adapta tu tono: Sé ultra rápido con repartidores (tienen prisa). Sé cálido con amigos. Sé frío con desconocidos.
+    - Usa muletillas humanas al inicio de tus frases ("Vale", "Entiendo", "A ver...").
+    - NUNCA uses la etiqueta [FIN_CONVERSACION] al instante. Espera a que la persona se despida explícitamente, o sea un repartidor que ya confirmó que dejó el paquete. Deja que la conversación fluya.`;
 
     let validApiHistory = [...apiHistoryRef.current];
     let combinedText = textToSend;
@@ -1360,6 +1335,7 @@ export default function App() {
               </button>
 
               <div className="grid grid-cols-2 gap-4 w-full mt-auto mb-4 px-2">
+                {/* TARJETA 1: CONSERJE IA */}
                 <div
                   onClick={() => setActiveTab("ai")}
                   className="bg-white p-4 rounded-3xl shadow-sm border border-slate-100 flex flex-col cursor-pointer hover:shadow-md transition-all active:scale-95"
@@ -1399,6 +1375,7 @@ export default function App() {
                   </p>
                 </div>
 
+                {/* TARJETA 2: NUEVO DISPOSITIVO */}
                 <div
                   onClick={iniciarConexionBluetooth}
                   className="bg-white p-4 rounded-3xl shadow-sm border border-slate-100 flex flex-col cursor-pointer hover:shadow-md transition-all active:scale-95 group"
@@ -1409,11 +1386,29 @@ export default function App() {
                     </div>
                   </div>
                   <h4 className="font-black text-slate-800 text-sm">
-                    Añadir Equipo
+                    Nuevo Dispositivo
                   </h4>
                   <p className="text-[10px] font-bold text-slate-400">
-                    Vincular nuevo
+                    Vincular al hogar
                   </p>
+                </div>
+
+                {/* TARJETA 3: PERSONAS AUTORIZADAS (Ancho completo) */}
+                <div
+                  onClick={() => setActiveTab("settings")}
+                  className="col-span-2 bg-white p-4 rounded-3xl shadow-sm border border-slate-100 flex flex-row items-center cursor-pointer hover:shadow-md transition-all active:scale-95 group"
+                >
+                  <div className="p-2 rounded-xl bg-slate-50 text-slate-600 group-hover:bg-[#00479b] group-hover:text-white transition-colors mr-4">
+                    <UserPlus size={20} />
+                  </div>
+                  <div>
+                    <h4 className="font-black text-slate-800 text-sm">
+                      Personas Autorizadas
+                    </h4>
+                    <p className="text-[10px] font-bold text-slate-400">
+                      Gestionar acceso y nombres
+                    </p>
+                  </div>
                 </div>
               </div>
             </div>
@@ -1654,19 +1649,7 @@ export default function App() {
                       <p className="text-xs text-slate-600 mb-4 font-medium italic">
                         "{msg.content}"
                       </p>
-                      <div className="flex space-x-2">
-                        <button
-                          onClick={() => handleDraftReply(msg)}
-                          disabled={draftingId === msg.id}
-                          className="flex-1 flex items-center justify-center bg-slate-800 text-white py-2.5 rounded-xl text-[10px] font-black transition-all shadow-lg active:scale-95"
-                        >
-                          {draftingId === msg.id ? (
-                            <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                          ) : (
-                            <Wand2 size={14} className="mr-2" />
-                          )}
-                          ✨ REDACTAR
-                        </button>
+                      <div className="flex w-full mt-2">
                         <a
                           href={`https://wa.me/${msg.phone.replace(
                             /\D/g,
@@ -1676,9 +1659,10 @@ export default function App() {
                           )}`}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="p-2.5 bg-[#25d366] text-white rounded-xl shadow-lg active:scale-95"
+                          className="w-full flex items-center justify-center p-3 bg-[#25d366] text-white rounded-xl shadow-lg active:scale-95 font-bold text-xs transition-transform"
                         >
-                          <PhoneForwarded size={16} />
+                          <PhoneForwarded size={16} className="mr-2" /> ENVIAR
+                          POR WHATSAPP
                         </a>
                       </div>
                     </div>
