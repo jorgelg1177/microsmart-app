@@ -931,16 +931,16 @@ export default function App() {
   if (!currentUser) {
     return (
       <div className="fixed inset-0 bg-[#f3f4f6] flex items-center justify-center font-sans p-4">
-        <div className="w-full max-w-md bg-white rounded-[3rem] p-8 shadow-2xl flex flex-col items-center">
-          <MicroSmartLogo className="h-32 mb-8 scale-110" />
-          <h2 className="text-2xl font-black text-slate-800 mb-2">
+        <div className="w-full max-w-md bg-white rounded-[3rem] p-6 sm:p-8 shadow-2xl flex flex-col items-center">
+          <MicroSmartLogo className="h-24 sm:h-32 mb-6 sm:mb-8 scale-110" />
+          <h2 className="text-xl sm:text-2xl font-black text-slate-800 mb-2">
             {authMode === "login"
               ? "Bienvenido a casa"
               : authMode === "register"
               ? "Crear cuenta"
               : "Recuperar acceso"}
           </h2>
-          <p className="text-slate-500 text-sm mb-6 text-center font-medium">
+          <p className="text-slate-500 text-xs sm:text-sm mb-6 text-center font-medium">
             {authMode === "login"
               ? "Inicia sesión para gestionar tu hogar MicroSmart"
               : authMode === "register"
@@ -948,12 +948,12 @@ export default function App() {
               : "Te enviaremos un enlace para restaurar tu contraseña"}
           </p>
           {authError && (
-            <div className="w-full bg-red-50 text-red-600 p-3 rounded-xl text-xs font-bold mb-4 text-center border border-red-100">
+            <div className="w-full bg-red-50 text-red-600 p-3 rounded-xl text-[10px] sm:text-xs font-bold mb-4 text-center border border-red-100">
               {authError}
             </div>
           )}
           {authMessage && (
-            <div className="w-full bg-green-50 text-green-700 p-3 rounded-xl text-xs font-bold mb-4 text-center border border-green-100">
+            <div className="w-full bg-green-50 text-green-700 p-3 rounded-xl text-[10px] sm:text-xs font-bold mb-4 text-center border border-green-100">
               {authMessage}
             </div>
           )}
@@ -969,7 +969,7 @@ export default function App() {
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="w-full bg-slate-50 border border-slate-200 rounded-2xl pl-12 pr-5 py-4 focus:outline-none focus:ring-2 focus:ring-[#00479b] text-slate-800 font-medium"
+                className="w-full bg-slate-50 border border-slate-200 rounded-2xl pl-12 pr-5 py-3.5 sm:py-4 focus:outline-none focus:ring-2 focus:ring-[#00479b] text-slate-800 text-sm sm:text-base font-medium"
               />
             </div>
             {authMode !== "reset" && (
@@ -985,14 +985,14 @@ export default function App() {
                   minLength="6"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-2xl pl-12 pr-5 py-4 focus:outline-none focus:ring-2 focus:ring-[#00479b] text-slate-800 font-medium"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-2xl pl-12 pr-5 py-3.5 sm:py-4 focus:outline-none focus:ring-2 focus:ring-[#00479b] text-slate-800 text-sm sm:text-base font-medium"
                 />
               </div>
             )}
             <button
               type="submit"
               disabled={authLoading}
-              className="w-full bg-[#00479b] hover:bg-blue-800 text-white font-black text-lg py-4 rounded-2xl shadow-lg shadow-blue-900/30 active:scale-95 transition-all mt-2 flex items-center justify-center"
+              className="w-full bg-[#00479b] hover:bg-blue-800 text-white font-black text-base sm:text-lg py-3.5 sm:py-4 rounded-2xl shadow-lg shadow-blue-900/30 active:scale-95 transition-all mt-2 flex items-center justify-center"
             >
               {authLoading ? (
                 <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
@@ -1015,7 +1015,7 @@ export default function App() {
                     setAuthError("");
                     setAuthMessage("");
                   }}
-                  className="text-xs font-bold text-slate-400 hover:text-[#00479b] transition-colors"
+                  className="text-[10px] sm:text-xs font-bold text-slate-400 hover:text-[#00479b] transition-colors"
                 >
                   ¿Olvidaste tu contraseña?
                 </button>
@@ -1027,7 +1027,7 @@ export default function App() {
                     setAuthError("");
                     setAuthMessage("");
                   }}
-                  className="text-sm font-bold text-slate-600 hover:text-[#00479b] transition-colors"
+                  className="text-xs sm:text-sm font-bold text-slate-600 hover:text-[#00479b] transition-colors"
                 >
                   Crear una cuenta nueva
                 </button>
@@ -1040,7 +1040,7 @@ export default function App() {
                   setAuthError("");
                   setAuthMessage("");
                 }}
-                className="text-sm font-bold text-slate-600 hover:text-[#00479b] transition-colors"
+                className="text-xs sm:text-sm font-bold text-slate-600 hover:text-[#00479b] transition-colors"
               >
                 ← Volver al inicio de sesión
               </button>
@@ -1053,7 +1053,7 @@ export default function App() {
 
   return (
     <div className="fixed inset-0 w-screen h-[100dvh] bg-[#f3f4f6] flex items-center justify-center font-sans text-slate-900 overflow-hidden">
-      {/* MODALES DE CONEXIÓN... (Sin cambios) */}
+      {/* MODALES DE CONEXIÓN */}
       {wifiModalOpen && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl p-6 w-full max-w-sm shadow-2xl animate-in zoom-in duration-300">
@@ -1200,12 +1200,14 @@ export default function App() {
         </div>
       )}
 
-      <div className="w-full max-w-md h-full md:h-[92vh] md:max-h-[850px] md:rounded-[3rem] bg-white shadow-[0_20px_50px_rgba(0,0,0,0.1)] overflow-hidden flex flex-col relative md:border-[10px] border-[#1e293b]">
+      {/* CONTENEDOR PRINCIPAL RESPONSIVO */}
+      <div className="w-full max-w-md h-[100dvh] md:h-[92vh] md:max-h-[850px] md:rounded-[3rem] bg-white shadow-[0_20px_50px_rgba(0,0,0,0.1)] overflow-hidden flex flex-col relative md:border-[10px] border-[#1e293b]">
         {/* --- HEADER SUPERIOR --- */}
-        <div className="bg-white px-6 pt-8 pb-3 flex flex-col z-10 border-b border-slate-50 shrink-0">
+        <div className="bg-white px-5 sm:px-6 pt-6 sm:pt-8 pb-3 flex flex-col z-10 border-b border-slate-50 shrink-0">
           <div className="flex justify-between items-center mb-3">
+            {/* Logo Responsivo */}
             <MicroSmartLogo
-              className="h-[110px] w-auto flex items-center"
+              className="h-[80px] sm:h-[110px] w-auto flex items-center"
               onClick={() => setActiveTab("home")}
             />
             <div className="flex space-x-1">
@@ -1218,10 +1220,10 @@ export default function App() {
             </div>
           </div>
 
-          <div className="flex items-center justify-between p-3 bg-slate-50 rounded-2xl border border-slate-100">
+          <div className="flex items-center justify-between p-2.5 sm:p-3 bg-slate-50 rounded-2xl border border-slate-100">
             <div className="flex items-center space-x-3">
-              <div className="w-10 h-10 bg-[#00479b] rounded-xl flex items-center justify-center shadow-lg shadow-blue-900/10 shrink-0">
-                <User size={20} className="text-white" />
+              <div className="w-8 h-8 sm:w-10 sm:h-10 bg-[#00479b] rounded-xl flex items-center justify-center shadow-lg shadow-blue-900/10 shrink-0">
+                <User className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
               </div>
               <div className="overflow-hidden">
                 {isEditingName ? (
@@ -1235,15 +1237,15 @@ export default function App() {
                       onKeyDown={(e) => {
                         if (e.key === "Enter") handleSaveName();
                       }}
-                      className="bg-white border border-slate-200 rounded px-2 py-1 text-sm font-bold text-slate-800 focus:outline-none w-28"
+                      className="bg-white border border-slate-200 rounded px-2 py-1 text-xs sm:text-sm font-bold text-slate-800 focus:outline-none w-28"
                     />
                   </div>
                 ) : (
                   <>
-                    <h1 className="text-base font-bold text-slate-800 leading-tight truncate">
+                    <h1 className="text-sm sm:text-base font-bold text-slate-800 leading-tight truncate">
                       {userName}
                     </h1>
-                    <p className="text-[9px] text-slate-400 font-medium truncate">
+                    <p className="text-[8px] sm:text-[9px] text-slate-400 font-medium truncate">
                       {currentUser.email}
                     </p>
                   </>
@@ -1264,14 +1266,15 @@ export default function App() {
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto pb-24 px-6 pt-2 scrollbar-hide bg-slate-50/50">
+        {/* CONTENEDOR DE SCROLL (PADDING INFERIOR EXTENDIDO PARA EVITAR "APEÑUSCADO") */}
+        <div className="flex-1 overflow-y-auto pb-28 px-4 sm:px-6 pt-2 scrollbar-hide bg-slate-50/50 flex flex-col">
           {/* ========================================================= */}
-          {/* TAB: INICIO (HOME)                                        */}
+          {/* TAB: INICIO (HOME) - REDISEÑADO CON FLUIDEZ               */}
           {/* ========================================================= */}
           {activeTab === "home" && (
-            <div className="flex flex-col items-center py-6 animate-in fade-in zoom-in duration-500 h-full">
+            <div className="flex flex-col items-center py-4 sm:py-6 animate-in fade-in zoom-in duration-500 h-full">
               <div
-                className={`inline-flex items-center space-x-2 px-4 py-1.5 rounded-full text-[10px] font-bold transition-all mb-8 ${
+                className={`inline-flex items-center space-x-2 px-3 sm:px-4 py-1.5 rounded-full text-[9px] sm:text-[10px] font-bold transition-all mb-6 sm:mb-8 ${
                   pairedDevices.length === 0
                     ? "bg-amber-50 text-amber-600"
                     : !deviceOnline
@@ -1282,7 +1285,7 @@ export default function App() {
                 }`}
               >
                 <div
-                  className={`w-2 h-2 rounded-full ${
+                  className={`w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full ${
                     pairedDevices.length === 0
                       ? "bg-amber-500"
                       : !deviceOnline
@@ -1301,6 +1304,7 @@ export default function App() {
                 </span>
               </div>
 
+              {/* Botón Circular Adaptativo */}
               <button
                 onClick={handleOpenDoor}
                 disabled={
@@ -1308,7 +1312,7 @@ export default function App() {
                   pairedDevices.length === 0 ||
                   !deviceOnline
                 }
-                className={`relative w-48 h-48 rounded-full flex flex-col items-center justify-center shadow-2xl transition-all duration-300 transform active:scale-95 ${
+                className={`relative w-40 h-40 sm:w-48 sm:h-48 min-h-[10rem] min-w-[10rem] rounded-full flex flex-col items-center justify-center shadow-2xl transition-all duration-300 transform active:scale-95 ${
                   pairedDevices.length === 0 || !deviceOnline
                     ? "bg-slate-200 text-slate-400 shadow-none"
                     : doorStatus === "idle"
@@ -1321,19 +1325,18 @@ export default function App() {
                 {doorStatus === "idle" && (
                   <>
                     <Power
-                      size={48}
-                      className={`${
+                      className={`w-10 h-10 sm:w-12 sm:h-12 ${
                         pairedDevices.length === 0 || !deviceOnline
                           ? "text-slate-400"
                           : "text-white"
-                      } mb-2`}
+                      } mb-1 sm:mb-2`}
                     />
                     <span
                       className={`${
                         pairedDevices.length === 0 || !deviceOnline
                           ? "text-slate-400"
                           : "text-white"
-                      } text-xl font-black`}
+                      } text-lg sm:text-xl font-black`}
                     >
                       ABRIR
                     </span>
@@ -1341,61 +1344,58 @@ export default function App() {
                 )}
                 {doorStatus === "opening" && (
                   <>
-                    <ShieldCheck
-                      size={48}
-                      className="text-white mb-2 animate-bounce"
-                    />
-                    <span className="text-white text-lg font-bold">
+                    <ShieldCheck className="w-10 h-10 sm:w-12 sm:h-12 text-white mb-1 sm:mb-2 animate-bounce" />
+                    <span className="text-white text-sm sm:text-lg font-bold">
                       PROCESANDO
                     </span>
                   </>
                 )}
                 {doorStatus === "opened" && (
                   <>
-                    <CheckCircle2
-                      size={48}
-                      className="text-white mb-2 animate-in zoom-in"
-                    />
-                    <span className="text-white text-xl font-black">
+                    <CheckCircle2 className="w-10 h-10 sm:w-12 sm:h-12 text-white mb-1 sm:mb-2 animate-in zoom-in" />
+                    <span className="text-white text-lg sm:text-xl font-black">
                       ABIERTO
                     </span>
                   </>
                 )}
               </button>
 
-              <div className="grid grid-cols-2 gap-4 w-full mt-auto mb-4 px-2">
+              {/* Tarjetas Inferiores Adaptativas */}
+              <div className="grid grid-cols-2 gap-3 sm:gap-4 w-full mt-auto mb-2 pt-8">
                 <div
                   onClick={() => setActiveTab("ai")}
-                  className="bg-white p-4 rounded-3xl shadow-sm border border-slate-100 flex flex-col cursor-pointer hover:shadow-md transition-all active:scale-95"
+                  className="bg-white p-3 sm:p-4 rounded-3xl shadow-sm border border-slate-100 flex flex-col cursor-pointer hover:shadow-md transition-all active:scale-95"
                 >
-                  <div className="flex justify-between items-start mb-3">
+                  <div className="flex justify-between items-start mb-2 sm:mb-3">
                     <div
-                      className={`p-2 rounded-xl ${
+                      className={`p-1.5 sm:p-2 rounded-xl ${
                         aiEnabled
                           ? "bg-blue-50 text-[#00479b]"
                           : "bg-slate-100 text-slate-400"
                       }`}
                     >
-                      <Bot size={20} />
+                      <Bot className="w-5 h-5 sm:w-6 sm:h-6" />
                     </div>
                     <button
                       onClick={toggleAiState}
-                      className={`w-10 h-5 rounded-full transition-all flex items-center p-0.5 ${
+                      className={`w-8 h-4 sm:w-10 sm:h-5 rounded-full transition-all flex items-center p-0.5 ${
                         aiEnabled ? "bg-[#7bc100]" : "bg-slate-300"
                       }`}
                     >
                       <div
-                        className={`w-4 h-4 bg-white rounded-full shadow-md transition-all ${
-                          aiEnabled ? "translate-x-5" : "translate-x-0"
+                        className={`w-3 h-3 sm:w-4 sm:h-4 bg-white rounded-full shadow-md transition-all ${
+                          aiEnabled
+                            ? "translate-x-4 sm:translate-x-5"
+                            : "translate-x-0"
                         }`}
                       ></div>
                     </button>
                   </div>
-                  <h4 className="font-black text-slate-800 text-sm">
+                  <h4 className="font-black text-slate-800 text-xs sm:text-sm truncate">
                     Conserje IA
                   </h4>
                   <p
-                    className={`text-[10px] font-bold ${
+                    className={`text-[9px] sm:text-[10px] font-bold truncate ${
                       aiEnabled ? "text-[#7bc100]" : "text-slate-400"
                     }`}
                   >
@@ -1408,17 +1408,17 @@ export default function App() {
                     setActiveTab("settings");
                     setShowDevices(true);
                   }}
-                  className="bg-white p-4 rounded-3xl shadow-sm border border-slate-100 flex flex-col cursor-pointer hover:shadow-md transition-all active:scale-95 group"
+                  className="bg-white p-3 sm:p-4 rounded-3xl shadow-sm border border-slate-100 flex flex-col cursor-pointer hover:shadow-md transition-all active:scale-95 group"
                 >
-                  <div className="flex justify-between items-start mb-3">
-                    <div className="p-2 rounded-xl bg-slate-50 text-slate-600 group-hover:bg-[#00479b] group-hover:text-white transition-colors">
-                      <Plus size={20} />
+                  <div className="flex justify-between items-start mb-2 sm:mb-3">
+                    <div className="p-1.5 sm:p-2 rounded-xl bg-slate-50 text-slate-600 group-hover:bg-[#00479b] group-hover:text-white transition-colors">
+                      <Plus className="w-5 h-5 sm:w-6 sm:h-6" />
                     </div>
                   </div>
-                  <h4 className="font-black text-slate-800 text-sm">
-                    Nuevo Dispositivo
+                  <h4 className="font-black text-slate-800 text-xs sm:text-sm truncate">
+                    Nuevo Equipo
                   </h4>
-                  <p className="text-[10px] font-bold text-slate-400">
+                  <p className="text-[9px] sm:text-[10px] font-bold text-slate-400 truncate">
                     Vincular al hogar
                   </p>
                 </div>
@@ -1428,16 +1428,16 @@ export default function App() {
                     setActiveTab("settings");
                     setShowPersons(true);
                   }}
-                  className="col-span-2 bg-white p-4 rounded-3xl shadow-sm border border-slate-100 flex flex-row items-center cursor-pointer hover:shadow-md transition-all active:scale-95 group"
+                  className="col-span-2 bg-white p-3 sm:p-4 rounded-3xl shadow-sm border border-slate-100 flex flex-row items-center cursor-pointer hover:shadow-md transition-all active:scale-95 group"
                 >
-                  <div className="p-2 rounded-xl bg-slate-50 text-slate-600 group-hover:bg-[#00479b] group-hover:text-white transition-colors mr-4">
-                    <UserPlus size={20} />
+                  <div className="p-1.5 sm:p-2 rounded-xl bg-slate-50 text-slate-600 group-hover:bg-[#00479b] group-hover:text-white transition-colors mr-3 sm:mr-4">
+                    <UserPlus className="w-5 h-5 sm:w-6 sm:h-6" />
                   </div>
-                  <div>
-                    <h4 className="font-black text-slate-800 text-sm">
+                  <div className="overflow-hidden">
+                    <h4 className="font-black text-slate-800 text-xs sm:text-sm truncate">
                       Personas Autorizadas
                     </h4>
-                    <p className="text-[10px] font-bold text-slate-400">
+                    <p className="text-[9px] sm:text-[10px] font-bold text-slate-400 truncate">
                       Gestionar acceso y nombres
                     </p>
                   </div>
@@ -1447,10 +1447,10 @@ export default function App() {
           )}
 
           {/* ========================================================= */}
-          {/* TABS: IA, HISTORIAL, MENSAJES (Sin cambios visuales)      */}
+          {/* TABS SECUNDARIAS (Sin grandes cambios)                      */}
           {/* ========================================================= */}
           {activeTab === "ai" && (
-            <div className="flex flex-col h-full animate-in slide-in-from-bottom-4 duration-500 bg-slate-50 -mx-6 rounded-t-[2.5rem] overflow-hidden border-t border-slate-200">
+            <div className="flex flex-col h-full animate-in slide-in-from-bottom-4 duration-500 bg-slate-50 -mx-4 sm:-mx-6 rounded-t-[2.5rem] overflow-hidden border-t border-slate-200">
               <div className="p-4 bg-white border-b border-slate-100 flex justify-between items-center shadow-sm z-10 sticky top-0">
                 <div>
                   <h2 className="text-sm font-black text-slate-800 flex items-center">
@@ -1459,7 +1459,7 @@ export default function App() {
                   </h2>
                   <p className="text-[10px] font-bold text-slate-500">
                     {aiEnabled
-                      ? "Respondiendo visitas automáticamente"
+                      ? "Respondiendo automáticamente"
                       : "Pausado. Atención manual."}
                   </p>
                 </div>
@@ -1476,7 +1476,7 @@ export default function App() {
                   ></div>
                 </button>
               </div>
-              <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+              <div className="flex-1 overflow-y-auto px-4 sm:px-5 py-4 space-y-4">
                 {!aiEnabled && (
                   <div className="flex justify-center my-4">
                     <span className="bg-amber-100 text-amber-700 text-[10px] font-bold px-3 py-1 rounded-full uppercase tracking-widest">
@@ -1492,7 +1492,7 @@ export default function App() {
                     }`}
                   >
                     <div
-                      className={`max-w-[85%] px-4 py-3 rounded-2xl text-base leading-relaxed shadow-sm ${
+                      className={`max-w-[85%] px-4 py-3 rounded-2xl text-sm sm:text-base leading-relaxed shadow-sm ${
                         msg.role === "user"
                           ? "bg-[#00479b] text-white rounded-br-none"
                           : "bg-white text-slate-700 rounded-bl-none border border-slate-100"
@@ -1524,7 +1524,7 @@ export default function App() {
                   <button
                     onClick={toggleFluidMode}
                     disabled={!aiEnabled}
-                    className={`w-20 h-20 rounded-full flex items-center justify-center transition-all duration-500 shadow-xl ${
+                    className={`w-16 h-16 sm:w-20 sm:h-20 rounded-full flex items-center justify-center transition-all duration-500 shadow-xl ${
                       !aiEnabled
                         ? "bg-slate-100 opacity-50 cursor-not-allowed shadow-none"
                         : isFluidMode
@@ -1535,15 +1535,15 @@ export default function App() {
                     }`}
                   >
                     {!aiEnabled ? (
-                      <MicOff size={32} className="text-slate-400" />
+                      <MicOff className="w-6 h-6 sm:w-8 sm:h-8 text-slate-400" />
                     ) : isFluidMode ? (
                       isListening ? (
-                        <Mic size={32} className="text-white" />
+                        <Mic className="w-6 h-6 sm:w-8 sm:h-8 text-white" />
                       ) : (
-                        <Volume2 size={32} className="text-white" />
+                        <Volume2 className="w-6 h-6 sm:w-8 sm:h-8 text-white" />
                       )
                     ) : (
-                      <MicOff size={32} className="text-slate-400" />
+                      <MicOff className="w-6 h-6 sm:w-8 sm:h-8 text-slate-400" />
                     )}
                   </button>
                 </div>
@@ -1554,13 +1554,13 @@ export default function App() {
           {activeTab === "history" && (
             <div className="animate-in fade-in slide-in-from-right-4 duration-500 py-4">
               <div className="flex justify-between items-center mb-6">
-                <h2 className="text-xl font-black text-slate-800 tracking-tight">
+                <h2 className="text-lg sm:text-xl font-black text-slate-800 tracking-tight">
                   Registro
                 </h2>
                 <button
                   onClick={handleSummarizeActivity}
                   disabled={isSummarizing || historyLog.length === 0}
-                  className={`flex items-center space-x-1 px-3 py-1.5 rounded-full text-[10px] font-bold shadow-lg transition-all ${
+                  className={`flex items-center space-x-1 px-3 py-1.5 rounded-full text-[9px] sm:text-[10px] font-bold shadow-lg transition-all ${
                     historyLog.length === 0
                       ? "bg-slate-200 text-slate-400 shadow-none"
                       : "bg-[#00479b] text-white shadow-blue-900/20 active:scale-95"
@@ -1594,17 +1594,17 @@ export default function App() {
                 {historyLog.length === 0 ? (
                   <div className="text-center py-10">
                     <p className="text-slate-400 font-bold text-xs">
-                      Aún no hay actividad hoy
+                      Aún no hay actividad
                     </p>
                   </div>
                 ) : (
                   historyLog.map((log, i) => (
                     <div
                       key={i}
-                      className="bg-white p-4 rounded-3xl shadow-sm border border-slate-100 flex items-center space-x-3"
+                      className="bg-white p-3 sm:p-4 rounded-2xl sm:rounded-3xl shadow-sm border border-slate-100 flex items-center space-x-3"
                     >
                       <div
-                        className={`p-2.5 rounded-xl ${
+                        className={`p-2 sm:p-2.5 rounded-xl ${
                           log.type === "ai_open"
                             ? "bg-green-100 text-[#7bc100]"
                             : log.type === "ai_denied"
@@ -1615,25 +1615,25 @@ export default function App() {
                         }`}
                       >
                         {log.type === "ai_open" ? (
-                          <Package size={18} />
+                          <Package className="w-4 h-4 sm:w-5 sm:h-5" />
                         ) : log.type === "ai_denied" ? (
-                          <ShieldAlert size={18} />
+                          <ShieldAlert className="w-4 h-4 sm:w-5 sm:h-5" />
                         ) : log.type === "ai_message" ? (
-                          <MessageSquare size={18} />
+                          <MessageSquare className="w-4 h-4 sm:w-5 sm:h-5" />
                         ) : (
-                          <User size={18} />
+                          <User className="w-4 h-4 sm:w-5 sm:h-5" />
                         )}
                       </div>
-                      <div className="flex-1">
-                        <h4 className="font-bold text-slate-800 text-xs mb-1">
+                      <div className="flex-1 overflow-hidden">
+                        <h4 className="font-bold text-slate-800 text-xs sm:text-sm mb-0.5 truncate">
                           {log.title}
                         </h4>
-                        <p className="text-[10px] text-slate-500 truncate">
+                        <p className="text-[9px] sm:text-[10px] text-slate-500 truncate">
                           {log.desc}
                         </p>
                       </div>
                       <div className="text-right shrink-0">
-                        <span className="text-[10px] font-black text-slate-700 block">
+                        <span className="text-[9px] sm:text-[10px] font-black text-slate-700 block">
                           {log.time}
                         </span>
                       </div>
@@ -1646,16 +1646,13 @@ export default function App() {
 
           {activeTab === "messages" && (
             <div className="animate-in fade-in slide-in-from-right-4 duration-500 py-4">
-              <h2 className="text-xl font-black text-slate-800 mb-6 tracking-tight">
+              <h2 className="text-lg sm:text-xl font-black text-slate-800 mb-6 tracking-tight">
                 Recados
               </h2>
               <div className="space-y-4">
                 {messagesList.length === 0 ? (
                   <div className="text-center py-16 bg-slate-50 rounded-[2.5rem] border-2 border-dashed border-slate-200">
-                    <MessageSquare
-                      size={40}
-                      className="text-slate-300 mx-auto mb-3"
-                    />
+                    <MessageSquare className="w-8 h-8 sm:w-10 sm:h-10 text-slate-300 mx-auto mb-3" />
                     <p className="text-slate-400 font-bold text-xs">
                       Sin mensajes pendientes
                     </p>
@@ -1664,22 +1661,22 @@ export default function App() {
                   messagesList.map((msg, i) => (
                     <div
                       key={i}
-                      className="bg-white p-5 rounded-3xl shadow-md border-l-4 border-l-[#7bc100]"
+                      className="bg-white p-4 sm:p-5 rounded-2xl sm:rounded-3xl shadow-md border-l-4 border-l-[#7bc100]"
                     >
                       <div className="flex justify-between items-start mb-2">
                         <div>
-                          <span className="text-[8px] font-black text-[#00479b] tracking-tighter uppercase">
+                          <span className="text-[7px] sm:text-[8px] font-black text-[#00479b] tracking-tighter uppercase">
                             PARA
                           </span>
-                          <h4 className="font-black text-slate-800 text-sm">
+                          <h4 className="font-black text-slate-800 text-xs sm:text-sm">
                             {msg.recipient}
                           </h4>
                         </div>
-                        <span className="text-[9px] font-bold text-slate-400">
+                        <span className="text-[8px] sm:text-[9px] font-bold text-slate-400">
                           {msg.time}
                         </span>
                       </div>
-                      <p className="text-xs text-slate-600 mb-4 font-medium italic">
+                      <p className="text-xs sm:text-sm text-slate-600 mb-4 font-medium italic">
                         "{msg.content}"
                       </p>
                       <div className="flex w-full mt-2">
@@ -1692,7 +1689,7 @@ export default function App() {
                           )}`}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="w-full flex items-center justify-center p-3 bg-[#25d366] text-white rounded-xl shadow-lg active:scale-95 font-bold text-xs transition-transform"
+                          className="w-full flex items-center justify-center p-2.5 sm:p-3 bg-[#25d366] text-white rounded-xl shadow-lg active:scale-95 font-bold text-xs sm:text-sm transition-transform"
                         >
                           <PhoneForwarded size={16} className="mr-2" /> ENVIAR
                           POR WHATSAPP
@@ -1709,20 +1706,20 @@ export default function App() {
           {/* TAB: AJUSTES (SETTINGS) - REDISEÑO ACORDEÓN               */}
           {/* ========================================================= */}
           {activeTab === "settings" && (
-            <div className="animate-in fade-in slide-in-from-right-4 duration-500 space-y-4 py-4">
-              <h2 className="text-xl font-black text-slate-800 mb-6 tracking-tight">
+            <div className="animate-in fade-in slide-in-from-right-4 duration-500 space-y-3 sm:space-y-4 py-4">
+              <h2 className="text-lg sm:text-xl font-black text-slate-800 mb-4 sm:mb-6 tracking-tight">
                 Configuración
               </h2>
 
               {/* ACORDEÓN 1: TUS EQUIPOS */}
-              <div className="bg-white rounded-3xl shadow-sm border border-slate-100 overflow-hidden transition-all">
+              <div className="bg-white rounded-2xl sm:rounded-3xl shadow-sm border border-slate-100 overflow-hidden transition-all">
                 <button
                   onClick={() => setShowDevices(!showDevices)}
-                  className="w-full flex justify-between items-center p-5 bg-white hover:bg-slate-50 transition-colors"
+                  className="w-full flex justify-between items-center p-4 sm:p-5 bg-white hover:bg-slate-50 transition-colors"
                 >
                   <div className="flex items-center space-x-3">
                     <div className="p-2 bg-slate-100 rounded-xl text-[#00479b]">
-                      <Smartphone size={18} />
+                      <Smartphone className="w-4 h-4 sm:w-5 sm:h-5" />
                     </div>
                     <h3 className="font-bold text-slate-800 text-sm">
                       Tus Equipos
@@ -1741,7 +1738,7 @@ export default function App() {
                       : "max-h-0 opacity-0"
                   } overflow-hidden`}
                 >
-                  <div className="p-5 pt-0 border-t border-slate-50">
+                  <div className="p-4 sm:p-5 pt-0 border-t border-slate-50">
                     {pairedDevices.length > 0 ? (
                       <div className="space-y-3 mb-4 mt-4">
                         {pairedDevices.map((dev, idx) => (
@@ -1750,7 +1747,7 @@ export default function App() {
                             className="bg-slate-50 border border-slate-200 p-3 rounded-xl flex justify-between items-center group"
                           >
                             <div>
-                              <span className="text-slate-800 font-bold text-xs block">
+                              <span className="text-slate-800 font-bold text-xs sm:text-sm block">
                                 {dev}
                               </span>
                               {deviceOnline ? (
@@ -1770,7 +1767,7 @@ export default function App() {
                               className="p-2 text-slate-400 hover:text-red-500 transition-colors hover:bg-red-50 rounded-lg"
                               title="Eliminar y formatear equipo"
                             >
-                              <Trash2 size={18} />
+                              <Trash2 className="w-4 h-4 sm:w-5 sm:h-5" />
                             </button>
                           </div>
                         ))}
@@ -1778,14 +1775,14 @@ export default function App() {
                     ) : (
                       <div className="text-center py-6 bg-slate-50 rounded-xl mb-4 mt-4 border border-slate-100">
                         <p className="text-slate-400 text-xs font-bold">
-                          No hay dispositivos en tu hogar
+                          No hay dispositivos vinculados
                         </p>
                       </div>
                     )}
                     <button
                       onClick={iniciarConexionBluetooth}
                       disabled={isPairing}
-                      className="w-full bg-[#00479b] hover:bg-blue-800 text-white font-bold py-3.5 rounded-xl text-xs flex items-center justify-center transition-all shadow-lg active:scale-95"
+                      className="w-full bg-[#00479b] hover:bg-blue-800 text-white font-bold py-3 sm:py-3.5 rounded-xl text-xs sm:text-sm flex items-center justify-center transition-all shadow-lg active:scale-95"
                     >
                       {isPairing ? (
                         <span className="animate-pulse flex items-center">
@@ -1802,14 +1799,14 @@ export default function App() {
               </div>
 
               {/* ACORDEÓN 2: PERSONAS AUTORIZADAS */}
-              <div className="bg-white rounded-3xl shadow-sm border border-slate-100 overflow-hidden transition-all">
+              <div className="bg-white rounded-2xl sm:rounded-3xl shadow-sm border border-slate-100 overflow-hidden transition-all">
                 <button
                   onClick={() => setShowPersons(!showPersons)}
-                  className="w-full flex justify-between items-center p-5 bg-white hover:bg-slate-50 transition-colors"
+                  className="w-full flex justify-between items-center p-4 sm:p-5 bg-white hover:bg-slate-50 transition-colors"
                 >
                   <div className="flex items-center space-x-3">
                     <div className="p-2 bg-slate-100 rounded-xl text-[#00479b]">
-                      <UserPlus size={18} />
+                      <UserPlus className="w-4 h-4 sm:w-5 sm:h-5" />
                     </div>
                     <h3 className="font-bold text-slate-800 text-sm">
                       Personas Autorizadas
@@ -1828,10 +1825,10 @@ export default function App() {
                       : "max-h-0 opacity-0"
                   } overflow-hidden`}
                 >
-                  <div className="p-5 pt-0 border-t border-slate-50">
+                  <div className="p-4 sm:p-5 pt-0 border-t border-slate-50">
                     <div className="space-y-2 mb-4 mt-4">
                       {authorizedNames.length === 0 && (
-                        <p className="text-center text-[10px] text-slate-400 font-bold py-2">
+                        <p className="text-center text-[10px] sm:text-xs text-slate-400 font-bold py-2">
                           La lista está vacía. Nadie puede entrar.
                         </p>
                       )}
@@ -1841,10 +1838,10 @@ export default function App() {
                           className="flex justify-between items-center bg-slate-50 p-2.5 rounded-xl border border-slate-200"
                         >
                           <div className="overflow-hidden">
-                            <span className="text-xs font-bold text-slate-700 block truncate">
+                            <span className="text-xs sm:text-sm font-bold text-slate-700 block truncate">
                               {person.name}
                             </span>
-                            <span className="text-[9px] text-slate-400 font-bold">
+                            <span className="text-[9px] sm:text-[10px] text-slate-400 font-bold">
                               {person.phone}
                             </span>
                           </div>
@@ -1863,11 +1860,11 @@ export default function App() {
                         value={newName}
                         onChange={(e) => setNewName(e.target.value)}
                         placeholder="Nombre completo"
-                        className="w-full bg-slate-50 border border-slate-200 text-base text-slate-800 rounded-lg px-3 py-2.5 focus:outline-none"
+                        className="w-full bg-slate-50 border border-slate-200 text-xs sm:text-sm text-slate-800 rounded-lg px-3 py-2.5 sm:py-3 focus:outline-none"
                       />
                       <div className="flex space-x-2">
                         <div className="flex-1 bg-slate-50 border border-slate-200 rounded-lg flex items-center px-3">
-                          <span className="text-slate-400 text-sm font-bold pr-2 mr-2 border-r border-slate-200">
+                          <span className="text-slate-400 text-xs sm:text-sm font-bold pr-2 mr-2 border-r border-slate-200">
                             +34
                           </span>
                           <input
@@ -1875,12 +1872,12 @@ export default function App() {
                             value={newPhone}
                             onChange={(e) => setNewPhone(e.target.value)}
                             placeholder="Teléfono"
-                            className="bg-transparent text-base text-slate-800 w-full py-2.5 focus:outline-none"
+                            className="bg-transparent text-xs sm:text-sm text-slate-800 w-full py-2.5 sm:py-3 focus:outline-none"
                           />
                         </div>
                         <button
                           onClick={handleAddName}
-                          className="bg-[#00479b] text-white px-4 rounded-lg text-xs font-bold shadow-lg active:scale-95 transition-all"
+                          className="bg-[#00479b] text-white px-4 rounded-lg text-xs sm:text-sm font-bold shadow-lg active:scale-95 transition-all"
                         >
                           OK
                         </button>
@@ -1890,15 +1887,15 @@ export default function App() {
                 </div>
               </div>
 
-              {/* ACORDEÓN 3: SOPORTE Y AYUDA (PREMIUM UI) */}
-              <div className="bg-white rounded-3xl shadow-sm border border-slate-100 overflow-hidden transition-all">
+              {/* ACORDEÓN 3: SOPORTE Y AYUDA */}
+              <div className="bg-white rounded-2xl sm:rounded-3xl shadow-sm border border-slate-100 overflow-hidden transition-all">
                 <button
                   onClick={() => setShowSupport(!showSupport)}
-                  className="w-full flex justify-between items-center p-5 bg-white hover:bg-slate-50 transition-colors"
+                  className="w-full flex justify-between items-center p-4 sm:p-5 bg-white hover:bg-slate-50 transition-colors"
                 >
                   <div className="flex items-center space-x-3">
                     <div className="p-2 bg-slate-100 rounded-xl text-[#00479b]">
-                      <LifeBuoy size={18} />
+                      <LifeBuoy className="w-4 h-4 sm:w-5 sm:h-5" />
                     </div>
                     <h3 className="font-bold text-slate-800 text-sm">
                       Soporte MicroSmart
@@ -1917,13 +1914,13 @@ export default function App() {
                       : "max-h-0 opacity-0"
                   } overflow-hidden`}
                 >
-                  <div className="p-5 pt-4 border-t border-slate-50 flex flex-col space-y-4">
+                  <div className="p-4 sm:p-5 pt-4 border-t border-slate-50 flex flex-col space-y-3 sm:space-y-4">
                     <button className="flex items-center justify-between p-3 bg-slate-50 rounded-xl hover:bg-slate-100 transition-colors text-left">
                       <div>
-                        <span className="block text-xs font-bold text-slate-800">
+                        <span className="block text-xs sm:text-sm font-bold text-slate-800">
                           Centro de Ayuda
                         </span>
-                        <span className="block text-[10px] text-slate-500">
+                        <span className="block text-[9px] sm:text-[10px] text-slate-500">
                           Preguntas frecuentes y tutoriales
                         </span>
                       </div>
@@ -1931,18 +1928,18 @@ export default function App() {
                     </button>
                     <button className="flex items-center justify-between p-3 bg-slate-50 rounded-xl hover:bg-slate-100 transition-colors text-left">
                       <div>
-                        <span className="block text-xs font-bold text-slate-800">
+                        <span className="block text-xs sm:text-sm font-bold text-slate-800">
                           Contactar Asistencia
                         </span>
-                        <span className="block text-[10px] text-slate-500">
+                        <span className="block text-[9px] sm:text-[10px] text-slate-500">
                           Habla con un técnico por WhatsApp
                         </span>
                       </div>
                       <PhoneForwarded size={16} className="text-[#00479b]" />
                     </button>
                     <div className="pt-2 flex flex-col items-center justify-center">
-                      <MicroSmartLogo className="h-6 opacity-50 mb-1" />
-                      <span className="text-[9px] font-bold text-slate-400">
+                      <MicroSmartLogo className="h-5 sm:h-6 opacity-50 mb-1" />
+                      <span className="text-[8px] sm:text-[9px] font-bold text-slate-400">
                         MicroSmart OS v1.0 (Stable)
                       </span>
                     </div>
@@ -1953,36 +1950,37 @@ export default function App() {
           )}
         </div>
 
-        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 w-[92%] bg-white/95 backdrop-blur-xl border border-white/50 px-2 py-2 flex justify-between items-center z-20 rounded-[2rem] shadow-2xl">
+        {/* --- NAVEGACIÓN INFERIOR (ANCHO ADAPTATIVO) --- */}
+        <div className="absolute bottom-2 sm:bottom-4 left-1/2 -translate-x-1/2 w-[96%] sm:w-[92%] bg-white/95 backdrop-blur-xl border border-white/50 px-1 sm:px-2 py-1.5 sm:py-2 flex justify-between items-center z-20 rounded-[2rem] shadow-[0_10px_40px_rgba(0,0,0,0.1)]">
           <NavItem
             active={activeTab === "home"}
             onClick={() => setActiveTab("home")}
-            icon={<Home size={22} />}
+            icon={<Home className="w-5 h-5 sm:w-6 sm:h-6" />}
             label="Inicio"
           />
           <NavItem
             active={activeTab === "history"}
             onClick={() => setActiveTab("history")}
-            icon={<Clock size={22} />}
+            icon={<Clock className="w-5 h-5 sm:w-6 sm:h-6" />}
             label="Registro"
           />
           <NavItem
             active={activeTab === "messages"}
             onClick={() => setActiveTab("messages")}
-            icon={<MessageSquare size={22} />}
+            icon={<MessageSquare className="w-5 h-5 sm:w-6 sm:h-6" />}
             badge={messagesList.length}
             label="Recados"
           />
           <NavItem
             active={activeTab === "ai"}
             onClick={() => setActiveTab("ai")}
-            icon={<Bot size={22} />}
+            icon={<Bot className="w-5 h-5 sm:w-6 sm:h-6" />}
             label="IA"
           />
           <NavItem
             active={activeTab === "settings"}
             onClick={() => setActiveTab("settings")}
-            icon={<Settings size={22} />}
+            icon={<Settings className="w-5 h-5 sm:w-6 sm:h-6" />}
             label="Ajustes"
           />
         </div>
@@ -1995,7 +1993,7 @@ function NavItem({ active, onClick, icon, label, badge }) {
   return (
     <button
       onClick={onClick}
-      className={`relative flex-1 flex flex-col items-center justify-center p-1.5 transition-all duration-300 ${
+      className={`relative flex-1 flex flex-col items-center justify-center p-1 sm:p-1.5 transition-all duration-300 ${
         active ? "text-[#00479b]" : "text-slate-400"
       }`}
     >
@@ -2006,13 +2004,13 @@ function NavItem({ active, onClick, icon, label, badge }) {
       >
         {icon}
         {badge > 0 && (
-          <span className="absolute -top-1 -right-1.5 w-3.5 h-3.5 bg-red-500 text-white text-[7px] font-black rounded-full flex items-center justify-center border-2 border-white">
+          <span className="absolute -top-1 -right-1 sm:-right-1.5 w-3.5 h-3.5 sm:w-4 sm:h-4 bg-red-500 text-white text-[7px] sm:text-[8px] font-black rounded-full flex items-center justify-center border-2 border-white">
             {badge}
           </span>
         )}
       </div>
       <span
-        className={`text-[7px] font-black uppercase tracking-tighter mt-1 transition-all ${
+        className={`text-[6px] sm:text-[7px] font-black uppercase tracking-tighter mt-1 transition-all ${
           active ? "opacity-100" : "opacity-0 h-0"
         }`}
       >
