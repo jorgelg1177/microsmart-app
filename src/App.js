@@ -32,6 +32,8 @@ import {
   Bluetooth,
   Mail,
   Key,
+  Copy,
+  Check,
 } from "lucide-react";
 
 // --- IMPORTACIONES DE FIREBASE ---
@@ -47,7 +49,6 @@ import {
 import { getDatabase, ref, set, push, onValue } from "firebase/database";
 
 // =========================================================================
-// ⚠️ AQUÍ VAN TUS CLAVES REALES DE FIREBASE
 const firebaseConfig = {
   apiKey: "AIzaSyAyQe2Ev40lMOx6_gNvMGv6P86oRrGlHvg",
   authDomain: "portero-a87d8.firebaseapp.com",
@@ -59,7 +60,6 @@ const firebaseConfig = {
   appId: "1:779001621682:web:ea0fed5bddc97e489dedab",
 };
 
-// Inicializar Firebase
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getDatabase(app);
@@ -122,7 +122,6 @@ const getCurrentTime = () => {
 };
 
 export default function App() {
-  // --- ESTADOS DE SEGURIDAD Y REGISTRO ---
   const [currentUser, setCurrentUser] = useState(null);
   const [authMode, setAuthMode] = useState("login");
   const [email, setEmail] = useState("");
@@ -131,7 +130,6 @@ export default function App() {
   const [authMessage, setAuthMessage] = useState("");
   const [authLoading, setAuthLoading] = useState(false);
 
-  // --- ESTADOS PRINCIPALES DE LA APP ---
   const [activeTab, setActiveTab] = useState("home");
   const [doorStatus, setDoorStatus] = useState("idle");
   const [isPairing, setIsPairing] = useState(false);
@@ -144,8 +142,11 @@ export default function App() {
   const [chatInput, setChatInput] = useState("");
   const [isTyping, setIsTyping] = useState(false);
 
-  // --- ESTADOS NUEVOS PARA EL BLUETOOTH Y LA LISTA DE REDES ---
+  // --- ESTADOS PARA MODALES DE CONEXIÓN ---
   const [wifiModalOpen, setWifiModalOpen] = useState(false);
+  const [showiOSModal, setShowiOSModal] = useState(false); // NUEVO: MODAL PARA iOS/WINDOWS
+  const [copiedUID, setCopiedUID] = useState(false); // NUEVO: EFECTO DE COPIADO
+
   const [tempSsid, setTempSsid] = useState("");
   const [tempPass, setTempPass] = useState("");
   const [bleCharacteristic, setBleCharacteristic] = useState(null);
@@ -178,7 +179,6 @@ export default function App() {
   const apiKey = process.env.REACT_APP_GEMINI_API_KEY;
   const aiModel = "gemini-2.5-flash";
 
-  // --- ESCUCHAR SI EL USUARIO ESTÁ LOGUEADO ---
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       setCurrentUser(user);
@@ -192,46 +192,31 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
-  // --- CARGAR DATOS ÚNICOS DEL USUARIO DESDE FIREBASE ---
   useEffect(() => {
     if (currentUser) {
       const uid = currentUser.uid;
-
-      // Cargar Dispositivos del usuario
       onValue(ref(db, `users/${uid}/devices`), (snapshot) => {
         setPairedDevices(snapshot.val() ? Object.values(snapshot.val()) : []);
       });
-
-      // Cargar Nombres Autorizados
       onValue(ref(db, `users/${uid}/authorizedNames`), (snapshot) => {
         setAuthorizedNames(snapshot.val() ? Object.values(snapshot.val()) : []);
       });
-
-      // Cargar Historial
       onValue(ref(db, `users/${uid}/history`), (snapshot) => {
         const data = snapshot.val();
         if (data) {
           const loadedHistory = Object.keys(data)
-            .map((key) => ({
-              ...data[key],
-              dbKey: key,
-            }))
+            .map((key) => ({ ...data[key], dbKey: key }))
             .sort((a, b) => b.id - a.id);
           setHistoryLog(loadedHistory);
         } else {
           setHistoryLog([]);
         }
       });
-
-      // Cargar Recados (Mensajes)
       onValue(ref(db, `users/${uid}/messages`), (snapshot) => {
         const data = snapshot.val();
         if (data) {
           const loadedMessages = Object.keys(data)
-            .map((key) => ({
-              ...data[key],
-              dbKey: key,
-            }))
+            .map((key) => ({ ...data[key], dbKey: key }))
             .sort((a, b) => b.id - a.id);
           setMessagesList(loadedMessages);
         } else {
@@ -253,7 +238,6 @@ export default function App() {
     }
   }, []);
 
-  // --- FUNCIONES DE AUTENTICACIÓN ---
   const handleAuth = async (e) => {
     e.preventDefault();
     setAuthError("");
@@ -278,7 +262,6 @@ export default function App() {
 
   const handleLogout = () => signOut(auth);
 
-  // --- GUARDADO PERSISTENTE EN BASE DE DATOS ---
   const saveToHistory = async (newLog) => {
     if (!currentUser) return;
     await push(ref(db, `users/${currentUser.uid}/history`), newLog);
@@ -289,17 +272,21 @@ export default function App() {
     await push(ref(db, `users/${currentUser.uid}/messages`), newMessage);
   };
 
-  // --- LÓGICA DE ESCANEO Y CONEXIÓN BLUETOOTH ---
+  // --- LÓGICA INTELIGENTE DE CONEXIÓN ---
   const iniciarConexionBluetooth = async () => {
+    // Si el navegador NO soporta Bluetooth (como en iOS), abrimos el plan B
+    if (!navigator.bluetooth) {
+      setShowiOSModal(true);
+      return;
+    }
+
     setIsPairing(true);
     try {
-      // 1. Pide permiso y escanea
       const device = await navigator.bluetooth.requestDevice({
-        filters: [{ name: "MicroSmart_ESP32" }],
+        filters: [{ name: "MicroSmart Conserje" }],
         optionalServices: ["19b10000-e8f2-537e-4f6c-d104768a1214"],
       });
 
-      // 2. Conecta
       const server = await device.gatt.connect();
       const service = await server.getPrimaryService(
         "19b10000-e8f2-537e-4f6c-d104768a1214"
@@ -309,29 +296,32 @@ export default function App() {
       );
 
       setBleCharacteristic(characteristic);
-
-      // 3. Lee la lista de redes que escaneó el ESP32
       const val = await characteristic.readValue();
       const decoded = new TextDecoder().decode(val);
 
       if (decoded) {
-        // Limpiamos la lista y quitamos nombres vacíos o repetidos
         const networksArray = decoded.split(",").filter((n) => n.trim() !== "");
         const uniqueNetworks = [...new Set(networksArray)];
         setAvailableNetworks(uniqueNetworks);
-
-        // Seleccionamos la primera red para que no salga en blanco
         if (uniqueNetworks.length > 0) {
           setTempSsid(uniqueNetworks[0]);
         }
       }
-
       setWifiModalOpen(true);
     } catch (error) {
       console.error(error);
-      alert(
-        "No se pudo conectar. Verifica que el dispositivo MicroSmart esté encendido, cerca de ti, y con la memoria borrada."
-      );
+      // Si el error dice algo de "Security" o "Not supported", lanzamos el plan B
+      if (
+        error.message &&
+        (error.message.includes("Bluetooth") ||
+          error.message.includes("supported"))
+      ) {
+        setShowiOSModal(true);
+      } else {
+        alert(
+          "No se pudo conectar. Verifica que el Conserje MicroSmart esté encendido."
+        );
+      }
     } finally {
       setIsPairing(false);
     }
@@ -358,6 +348,25 @@ export default function App() {
     } catch (error) {
       alert("Hubo un error enviando los datos al dispositivo.");
     }
+  };
+
+  // Función para copiar el UID en el portapapeles (iOS Modal)
+  const handleCopyUID = () => {
+    if (currentUser) {
+      navigator.clipboard.writeText(currentUser.uid);
+      setCopiedUID(true);
+      setTimeout(() => setCopiedUID(false), 3000);
+    }
+  };
+
+  // Función ficticia para simular que ya terminó con el portal WiFi
+  const handleFinishWiFiSetup = async () => {
+    const newDeviceName = "Conserje Inteligente";
+    if (!pairedDevices.includes(newDeviceName)) {
+      const updatedDevices = [...pairedDevices, newDeviceName];
+      await set(ref(db, `users/${currentUser.uid}/devices`), updatedDevices);
+    }
+    setShowiOSModal(false);
   };
 
   const handleAddName = async () => {
@@ -411,7 +420,7 @@ export default function App() {
     }
   };
 
-  // --- LÓGICA DE IA Y VOZ (INTACTA) ---
+  // --- LÓGICA DE IA Y VOZ ---
   const resetSilenceTimer = () => {
     if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
     if (isFluidModeRef.current) {
@@ -666,7 +675,6 @@ export default function App() {
 
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${aiModel}:generateContent?key=${apiKey}`;
 
-    // --- NUEVA LÓGICA DE SEGURIDAD INYECTADA ---
     const nombresPermitidos = authorizedNamesRef.current
       .map((p) => p.name)
       .join(", ");
@@ -742,13 +750,11 @@ export default function App() {
         actionType = "opened";
         const empresa = abrirMatch[1].trim();
         const destinatario = abrirMatch[2].trim();
-
         if (currentUser) {
           set(ref(db, `users/${currentUser.uid}/puerta/estado`), "ABRIR").catch(
             (e) => console.error(e)
           );
         }
-
         saveToHistory({
           id: Date.now(),
           type: "ai_open",
@@ -766,7 +772,6 @@ export default function App() {
         actionType = "message_saved";
         const destinatario = mensajeMatch[1].trim();
         const textoMensaje = mensajeMatch[2].trim();
-
         saveMessage({
           id: Date.now(),
           recipient: destinatario,
@@ -779,7 +784,6 @@ export default function App() {
                 p.name.includes(destinatario.split(" ")[0])
             )?.phone || "Desconocido",
         });
-
         saveToHistory({
           id: Date.now() + 1,
           type: "ai_message",
@@ -805,7 +809,6 @@ export default function App() {
       }
 
       if (aiText.includes("[FIN_CONVERSACION]")) endConversation = true;
-
       setChatHistory((prev) => [
         ...prev,
         { role: "ai", content: finalAiText, action: actionType },
@@ -832,16 +835,11 @@ export default function App() {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [chatHistory, isTyping]);
 
-  // =================================================================================
-  // PANTALLA 1: LOGIN REAL CON FIREBASE AUTH (Logos 30% más grandes)
-  // =================================================================================
   if (!currentUser) {
     return (
       <div className="fixed inset-0 bg-[#f3f4f6] flex items-center justify-center font-sans p-4">
         <div className="w-full max-w-md bg-white rounded-[3rem] p-8 shadow-2xl flex flex-col items-center">
-          {/* LOGO 30% MÁS GRANDE (h-32) */}
           <MicroSmartLogo className="h-32 mb-8 scale-110" />
-
           <h2 className="text-2xl font-black text-slate-800 mb-2">
             {authMode === "login"
               ? "Bienvenido a casa"
@@ -856,7 +854,6 @@ export default function App() {
               ? "Regístrate para vincular tus dispositivos"
               : "Te enviaremos un enlace para restaurar tu contraseña"}
           </p>
-
           {authError && (
             <div className="w-full bg-red-50 text-red-600 p-3 rounded-xl text-xs font-bold mb-4 text-center border border-red-100">
               {authError}
@@ -867,7 +864,6 @@ export default function App() {
               {authMessage}
             </div>
           )}
-
           <form onSubmit={handleAuth} className="w-full space-y-3">
             <div className="relative">
               <Mail
@@ -883,7 +879,6 @@ export default function App() {
                 className="w-full bg-slate-50 border border-slate-200 rounded-2xl pl-12 pr-5 py-4 focus:outline-none focus:ring-2 focus:ring-[#00479b] text-slate-800 font-medium"
               />
             </div>
-
             {authMode !== "reset" && (
               <div className="relative">
                 <Key
@@ -901,7 +896,6 @@ export default function App() {
                 />
               </div>
             )}
-
             <button
               type="submit"
               disabled={authLoading}
@@ -918,7 +912,6 @@ export default function App() {
               )}
             </button>
           </form>
-
           <div className="mt-6 flex flex-col items-center space-y-3 w-full">
             {authMode === "login" ? (
               <>
@@ -965,12 +958,9 @@ export default function App() {
     );
   }
 
-  // =================================================================================
-  // PANTALLA 2: APLICACIÓN PRINCIPAL (Aislada por usuario)
-  // =================================================================================
   return (
     <div className="fixed inset-0 w-screen h-[100dvh] bg-[#f3f4f6] flex items-center justify-center font-sans text-slate-900 overflow-hidden">
-      {/* MODAL BLUETOOTH CON LA LISTA DESPLEGABLE DE WIFI */}
+      {/* 1. MODAL BLUETOOTH NORMAL (PARA ANDROID Y CHROME) */}
       {wifiModalOpen && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl p-6 w-full max-w-sm shadow-2xl animate-in zoom-in duration-300">
@@ -984,7 +974,6 @@ export default function App() {
               Dispositivo enlazado. Selecciona tu red WiFi para darle acceso a
               internet.
             </p>
-
             <div className="space-y-3">
               {availableNetworks.length > 0 ? (
                 <select
@@ -1010,7 +999,6 @@ export default function App() {
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-[#00479b] text-sm font-medium"
                 />
               )}
-
               <input
                 type="password"
                 placeholder="Contraseña del WiFi"
@@ -1019,7 +1007,6 @@ export default function App() {
                 className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-[#00479b] text-sm font-medium"
               />
             </div>
-
             <div className="mt-6 flex space-x-3">
               <button
                 onClick={() => {
@@ -1042,10 +1029,88 @@ export default function App() {
         </div>
       )}
 
+      {/* 2. MODAL "ANTI-TONTOS" PARA iOS Y NAVEGADORES SIN BLUETOOTH */}
+      {showiOSModal && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl p-6 w-full max-w-sm shadow-2xl animate-in zoom-in duration-300 flex flex-col items-center">
+            <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mb-4">
+              <Wifi size={32} className="text-[#00479b]" />
+            </div>
+            <h3 className="text-xl font-black text-center text-slate-800 mb-2">
+              Enlazar Producto MicroSmart
+            </h3>
+            <p className="text-xs text-center text-slate-500 mb-6 px-2">
+              Tu navegador bloquea el Bluetooth. Usaremos nuestra conexión Wi-Fi
+              segura de forma manual.
+            </p>
+
+            <div className="w-full space-y-4 mb-6">
+              <div className="bg-blue-50 p-4 rounded-2xl border border-blue-100 relative">
+                <span className="absolute -top-3 left-4 bg-[#00479b] text-white text-[9px] font-black px-2 py-1 rounded-full">
+                  PASO 1
+                </span>
+                <p className="text-xs font-bold text-slate-700 mb-2">
+                  Copia tu identificador de seguridad:
+                </p>
+                <button
+                  onClick={handleCopyUID}
+                  className={`w-full py-3 rounded-xl text-xs font-bold flex items-center justify-center transition-all ${
+                    copiedUID
+                      ? "bg-green-500 text-white"
+                      : "bg-white border border-[#00479b] text-[#00479b] hover:bg-blue-50"
+                  }`}
+                >
+                  {copiedUID ? (
+                    <>
+                      <Check size={16} className="mr-2" /> ¡COPIADO!
+                    </>
+                  ) : (
+                    <>
+                      <Copy size={16} className="mr-2" /> COPIAR CÓDIGO
+                    </>
+                  )}
+                </button>
+              </div>
+
+              <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 relative">
+                <span className="absolute -top-3 left-4 bg-slate-800 text-white text-[9px] font-black px-2 py-1 rounded-full">
+                  PASO 2
+                </span>
+                <p className="text-xs font-medium text-slate-600 leading-relaxed">
+                  Ve a los ajustes de tu teléfono, busca redes Wi-Fi y conéctate
+                  a:
+                  <br />
+                  <strong className="block text-center text-[#7bc100] text-sm mt-2">
+                    MicroSmart_Conserje
+                  </strong>
+                </p>
+                <p className="text-[10px] text-slate-400 mt-2 text-center italic">
+                  La pantalla de configuración saltará sola.
+                </p>
+              </div>
+            </div>
+
+            <div className="w-full flex space-x-3">
+              <button
+                onClick={() => setShowiOSModal(false)}
+                className="flex-1 py-3 bg-slate-100 text-slate-600 rounded-xl font-bold text-sm"
+              >
+                Cerrar
+              </button>
+              <button
+                onClick={handleFinishWiFiSetup}
+                className="flex-1 py-3 bg-green-500 text-white rounded-xl font-bold text-sm shadow-lg flex justify-center items-center"
+              >
+                Ya lo hice
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="w-full max-w-md h-full md:h-[92vh] md:max-h-[850px] md:rounded-[3rem] bg-white shadow-[0_20px_50px_rgba(0,0,0,0.1)] overflow-hidden flex flex-col relative md:border-[10px] border-[#1e293b]">
         <div className="bg-white px-6 pt-8 pb-3 flex flex-col z-10 border-b border-slate-50 shrink-0">
           <div className="flex justify-between items-center mb-3">
-            {/* LOGO 30% MÁS GRANDE AQUÍ TAMBIÉN (h-[110px]) */}
             <MicroSmartLogo className="h-[110px] w-auto flex items-center" />
             <div className="flex space-x-1">
               <button
@@ -1239,13 +1304,6 @@ export default function App() {
                       <MicOff size={32} className="text-slate-400" />
                     )}
                   </button>
-                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">
-                    {isFluidMode
-                      ? isListening
-                        ? "Escuchando..."
-                        : "Pensando..."
-                      : "Toca el micro para despertar"}
-                  </p>
                 </div>
               </div>
             </div>
@@ -1422,13 +1480,11 @@ export default function App() {
                 Configuración
               </h2>
 
-              {/* --- MÓDULO IOT: VINCULAR DISPOSITIVOS --- */}
               <div className="bg-gradient-to-br from-slate-800 to-slate-900 rounded-3xl p-5 shadow-lg">
                 <div className="flex items-center space-x-3 text-white mb-4">
                   <Smartphone size={18} className="text-[#7bc100]" />
                   <h3 className="font-bold text-sm">Dispositivos MicroSmart</h3>
                 </div>
-
                 {pairedDevices.length > 0 ? (
                   <div className="space-y-2 mb-4">
                     {pairedDevices.map((dev, idx) => (
@@ -1451,11 +1507,10 @@ export default function App() {
                 ) : (
                   <div className="text-center py-4 bg-slate-800/50 rounded-xl mb-4 border border-slate-700">
                     <p className="text-slate-400 text-xs font-bold">
-                      No hay telefonillos vinculados
+                      No hay dispositivos vinculados
                     </p>
                   </div>
                 )}
-
                 <button
                   onClick={iniciarConexionBluetooth}
                   disabled={isPairing}
@@ -1463,19 +1518,18 @@ export default function App() {
                 >
                   {isPairing ? (
                     <span className="animate-pulse flex items-center">
-                      <Bluetooth size={16} className="mr-2" /> Escaneando por
-                      Bluetooth...
+                      <Bluetooth size={16} className="mr-2" /> Buscando
+                      productos...
                     </span>
                   ) : (
                     <>
-                      <Bluetooth size={16} className="mr-2" /> Emparejar Nuevo
-                      Dispositivo
+                      <Bluetooth size={16} className="mr-2" /> Emparejar
+                      Producto
                     </>
                   )}
                 </button>
               </div>
 
-              {/* --- MÓDULO USUARIOS AUTORIZADOS --- */}
               <div className="bg-white rounded-3xl p-5 shadow-sm border border-slate-100">
                 <div className="flex items-center space-x-3 mb-4">
                   <UserPlus size={18} className="text-[#00479b]" />
@@ -1540,7 +1594,6 @@ export default function App() {
           )}
         </div>
 
-        {/* NAVEGACIÓN INFERIOR */}
         <div className="absolute bottom-4 left-1/2 -translate-x-1/2 w-[92%] bg-white/95 backdrop-blur-xl border border-white/50 px-2 py-2 flex justify-between items-center z-20 rounded-[2rem] shadow-2xl">
           <NavItem
             active={activeTab === "home"}
