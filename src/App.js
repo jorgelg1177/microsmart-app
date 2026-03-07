@@ -828,7 +828,7 @@ export default function App() {
         ? nombresPermitidos
         : "NADIE. (La lista está vacía, tienes PROHIBIDO abrir la puerta)";
 
-    // --- PROMPT CORREGIDO: PRIVACIDAD ESTRICTA RESTAURADA Y REGLA DE REPARTIDORES INYECTADA ---
+    // --- PROMPT CORREGIDO: SE ELIMINÓ LA FLECHA "->" DE LAS INSTRUCCIONES ---
     const systemPrompt = `Eres el Conserje Inteligente de MicroSmart. Eres un sistema global, adaptativo y profesional.
 
     LISTA DE AUTORIZADOS: [${listaActual}]. Si dice "NADIE", tienes PROHIBIDO abrir a cualquier persona.
@@ -843,11 +843,11 @@ export default function App() {
     - Pregunta de qué empresa de reparto viene (si no lo ha mencionado).
     - Si el repartidor dice la empresa y acierta el nombre Y apellido del destinatario, le abres.
     - INSTRUCCIÓN DE SEGURIDAD AL ABRIR: Cada vez que le des acceso a un repartidor, DEBES pedirle que deje el paquete en un lugar seguro adentro y que por favor se asegure de cerrar bien la puerta al salir, y dale las gracias. ¡IMPORTANTE! Usa SIEMPRE TUS PROPIAS PALABRAS (varía la forma de decirlo cada vez para no sonar como un robot grabado).
-    - Usa la etiqueta: -> [ABRIR_PUERTA | Empresa | Destinatario]
+    - Usa la etiqueta: [ABRIR_PUERTA | Empresa | Destinatario]
 
     REGLA 3 - VISITAS Y FAMILIARES (NO ENTRAN, DEJAN RECADO):
     - SOLO cuando la visita haya acertado el nombre Y apellido, le dices amablemente que no se encuentran en casa en este momento y le ofreces tomar un recado.
-    - Usa la etiqueta: -> [MENSAJE_PARA | Residente | texto]
+    - Usa la etiqueta: [MENSAJE_PARA | Residente | texto]
 
     REGLA 4 - MODO CAMALEÓN Y NUNCA COLGAR DE GOLPE:
     - Adapta tu tono: Sé rápido con repartidores, pero siempre da la instrucción de seguridad. Sé cálido con conocidos. Sé frío con desconocidos.
@@ -888,7 +888,12 @@ export default function App() {
 
       let actionType = null,
         endConversation = false;
-      const finalAiText = aiText.replace(/\[.*?\]/g, "").trim();
+
+      // --- FILTRO DE LIMPIEZA INYECTADO: ELIMINAR FLECHAS POR SI ACASO ---
+      const finalAiText = aiText
+        .replace(/\[.*?\]/g, "")
+        .replace(/->/g, "")
+        .trim();
 
       const abrirMatch = aiText.match(
         /\[ABRIR_PUERTA\s*\|\s*(.*?)\s*\|\s*(.*?)\]/
@@ -986,7 +991,7 @@ export default function App() {
     return (
       <div className="fixed inset-0 bg-[#f3f4f6] flex items-center justify-center font-sans p-4">
         <div className="w-full max-w-md bg-white rounded-[3rem] p-6 sm:p-8 shadow-2xl flex flex-col items-center">
-          <MicroSmartLogo className="h-32 sm:h-40 mb-6 sm:mb-8 scale-125" />
+          <MicroSmartLogo className="h-24 sm:h-32 mb-6 sm:mb-8 scale-125" />
 
           <h2 className="text-xl sm:text-2xl font-black text-slate-800 mb-2">
             {authMode === "login"
@@ -1260,7 +1265,6 @@ export default function App() {
         {/* --- HEADER SUPERIOR --- */}
         <div className="bg-white px-5 sm:px-6 pt-6 sm:pt-8 pb-3 flex flex-col z-10 border-b border-slate-50 shrink-0">
           <div className="flex justify-between items-center mb-3">
-            {/* LOGO AUMENTADO UN 30% */}
             <MicroSmartLogo
               className="h-[105px] sm:h-[140px] w-auto flex items-center"
               onClick={() => setActiveTab("home")}
