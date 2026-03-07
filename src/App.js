@@ -36,7 +36,6 @@ import {
   Check,
 } from "lucide-react";
 
-// --- IMPORTACIONES DE FIREBASE ---
 import { initializeApp } from "firebase/app";
 import {
   getAuth,
@@ -48,7 +47,6 @@ import {
 } from "firebase/auth";
 import { getDatabase, ref, set, push, onValue } from "firebase/database";
 
-// =========================================================================
 const firebaseConfig = {
   apiKey: "AIzaSyAyQe2Ev40lMOx6_gNvMGv6P86oRrGlHvg",
   authDomain: "portero-a87d8.firebaseapp.com",
@@ -63,22 +61,17 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getDatabase(app);
-// =========================================================================
 
 const fetchWithRetry = async (url, options, retries = 2, delay = 1000) => {
   try {
     const res = await fetch(url, options);
     if (!res.ok) {
-      const errorData = await res.json().catch(() => null);
       if (res.status === 401)
         throw new Error("Error 401: Clave de API inválida.");
       if (res.status === 404)
         throw new Error("Error 404: El modelo de IA no se encuentra.");
-      if (res.status === 400 || res.status === 403 || res.status === 429) {
-        throw new Error(
-          `Error de Google (${res.status}): Revisar clave API o cuota`
-        );
-      }
+      if (res.status === 400 || res.status === 403 || res.status === 429)
+        throw new Error(`Error de Google (${res.status})`);
       throw new Error(`Error HTTP: ${res.status}`);
     }
     return await res.json();
@@ -86,8 +79,7 @@ const fetchWithRetry = async (url, options, retries = 2, delay = 1000) => {
     if (
       retries > 0 &&
       !error.message.includes("Error 401") &&
-      !error.message.includes("Error 404") &&
-      !error.message.includes("Error de Google")
+      !error.message.includes("Error 404")
     ) {
       await new Promise((r) => setTimeout(r, delay));
       return fetchWithRetry(url, options, retries - 1, delay * 2);
@@ -121,6 +113,24 @@ const getCurrentTime = () => {
   });
 };
 
+// --- TRADUCTOR DE ERRORES DE FIREBASE ---
+const getFriendlyAuthError = (errorMsg) => {
+  const msg = errorMsg.toLowerCase();
+  if (msg.includes("invalid-email"))
+    return "El correo electrónico no es válido.";
+  if (msg.includes("user-not-found") || msg.includes("invalid-credential"))
+    return "Correo o contraseña incorrectos.";
+  if (msg.includes("wrong-password"))
+    return "La contraseña es incorrecta. Inténtalo de nuevo.";
+  if (msg.includes("email-already-in-use"))
+    return "Este correo ya está registrado en MicroSmart.";
+  if (msg.includes("weak-password"))
+    return "La contraseña debe tener al menos 6 caracteres.";
+  if (msg.includes("network-request-failed"))
+    return "Error de conexión. Verifica tu internet.";
+  return "Ocurrió un error. Verifica tus datos e inténtalo de nuevo.";
+};
+
 export default function App() {
   const [currentUser, setCurrentUser] = useState(null);
   const [authMode, setAuthMode] = useState("login");
@@ -142,10 +152,9 @@ export default function App() {
   const [chatInput, setChatInput] = useState("");
   const [isTyping, setIsTyping] = useState(false);
 
-  // --- ESTADOS PARA MODALES DE CONEXIÓN ---
   const [wifiModalOpen, setWifiModalOpen] = useState(false);
-  const [showiOSModal, setShowiOSModal] = useState(false); // NUEVO: MODAL PARA iOS/WINDOWS
-  const [copiedUID, setCopiedUID] = useState(false); // NUEVO: EFECTO DE COPIADO
+  const [showiOSModal, setShowiOSModal] = useState(false);
+  const [copiedUID, setCopiedUID] = useState(false);
 
   const [tempSsid, setTempSsid] = useState("");
   const [tempPass, setTempPass] = useState("");
@@ -157,6 +166,10 @@ export default function App() {
   const [isSummarizing, setIsSummarizing] = useState(false);
   const [activitySummary, setActivitySummary] = useState("");
   const [draftingId, setDraftingId] = useState(null);
+
+  // --- NUEVOS ESTADOS DE CONTROL ---
+  const [aiEnabled, setAiEnabled] = useState(true);
+  const [deviceOnline, setDeviceOnline] = useState(false);
 
   const isFluidModeRef = useRef(false);
   const isProcessingRef = useRef(false);
@@ -187,6 +200,8 @@ export default function App() {
         setPairedDevices([]);
         setAuthorizedNames([]);
         setMessagesList([]);
+        setDeviceOnline(false);
+        setAiEnabled(true);
       }
     });
     return () => unsubscribe();
@@ -195,33 +210,41 @@ export default function App() {
   useEffect(() => {
     if (currentUser) {
       const uid = currentUser.uid;
-      onValue(ref(db, `users/${uid}/devices`), (snapshot) => {
-        setPairedDevices(snapshot.val() ? Object.values(snapshot.val()) : []);
+      onValue(ref(db, `users/${uid}/devices`), (s) =>
+        setPairedDevices(s.val() ? Object.values(s.val()) : [])
+      );
+      onValue(ref(db, `users/${uid}/authorizedNames`), (s) =>
+        setAuthorizedNames(s.val() ? Object.values(s.val()) : [])
+      );
+      onValue(ref(db, `users/${uid}/history`), (s) => {
+        const d = s.val();
+        setHistoryLog(
+          d
+            ? Object.keys(d)
+                .map((k) => ({ ...d[k], dbKey: k }))
+                .sort((a, b) => b.id - a.id)
+            : []
+        );
       });
-      onValue(ref(db, `users/${uid}/authorizedNames`), (snapshot) => {
-        setAuthorizedNames(snapshot.val() ? Object.values(snapshot.val()) : []);
+      onValue(ref(db, `users/${uid}/messages`), (s) => {
+        const d = s.val();
+        setMessagesList(
+          d
+            ? Object.keys(d)
+                .map((k) => ({ ...d[k], dbKey: k }))
+                .sort((a, b) => b.id - a.id)
+            : []
+        );
       });
-      onValue(ref(db, `users/${uid}/history`), (snapshot) => {
-        const data = snapshot.val();
-        if (data) {
-          const loadedHistory = Object.keys(data)
-            .map((key) => ({ ...data[key], dbKey: key }))
-            .sort((a, b) => b.id - a.id);
-          setHistoryLog(loadedHistory);
-        } else {
-          setHistoryLog([]);
-        }
+
+      // NUEVO: Escuchar el estado online del dispositivo en tiempo real
+      onValue(ref(db, `users/${uid}/puerta/online`), (s) => {
+        setDeviceOnline(s.val() === "ONLINE");
       });
-      onValue(ref(db, `users/${uid}/messages`), (snapshot) => {
-        const data = snapshot.val();
-        if (data) {
-          const loadedMessages = Object.keys(data)
-            .map((key) => ({ ...data[key], dbKey: key }))
-            .sort((a, b) => b.id - a.id);
-          setMessagesList(loadedMessages);
-        } else {
-          setMessagesList([]);
-        }
+
+      // NUEVO: Escuchar si el usuario tiene activada o pausada la IA
+      onValue(ref(db, `users/${uid}/settings/aiEnabled`), (s) => {
+        if (s.exists()) setAiEnabled(s.val());
       });
     }
   }, [currentUser]);
@@ -229,7 +252,6 @@ export default function App() {
   useEffect(() => {
     authorizedNamesRef.current = authorizedNames;
   }, [authorizedNames]);
-
   useEffect(() => {
     if ("speechSynthesis" in window) {
       window.speechSynthesis.getVoices();
@@ -254,39 +276,34 @@ export default function App() {
         setAuthMessage("Revisa tu correo para cambiar la contraseña.");
       }
     } catch (error) {
-      setAuthError("Error: Verifica tus datos. " + error.message);
+      // USAMOS NUESTRO TRADUCTOR DE ERRORES AQUÍ
+      setAuthError(getFriendlyAuthError(error.message));
     } finally {
       setAuthLoading(false);
     }
   };
 
   const handleLogout = () => signOut(auth);
-
   const saveToHistory = async (newLog) => {
-    if (!currentUser) return;
-    await push(ref(db, `users/${currentUser.uid}/history`), newLog);
+    if (currentUser)
+      await push(ref(db, `users/${currentUser.uid}/history`), newLog);
   };
-
   const saveMessage = async (newMessage) => {
-    if (!currentUser) return;
-    await push(ref(db, `users/${currentUser.uid}/messages`), newMessage);
+    if (currentUser)
+      await push(ref(db, `users/${currentUser.uid}/messages`), newMessage);
   };
 
-  // --- LÓGICA INTELIGENTE DE CONEXIÓN ---
   const iniciarConexionBluetooth = async () => {
-    // Si el navegador NO soporta Bluetooth (como en iOS), abrimos el plan B
     if (!navigator.bluetooth) {
       setShowiOSModal(true);
       return;
     }
-
     setIsPairing(true);
     try {
       const device = await navigator.bluetooth.requestDevice({
         filters: [{ name: "MicroSmart Conserje" }],
         optionalServices: ["19b10000-e8f2-537e-4f6c-d104768a1214"],
       });
-
       const server = await device.gatt.connect();
       const service = await server.getPrimaryService(
         "19b10000-e8f2-537e-4f6c-d104768a1214"
@@ -294,11 +311,9 @@ export default function App() {
       const characteristic = await service.getCharacteristic(
         "19b10001-e8f2-537e-4f6c-d104768a1214"
       );
-
       setBleCharacteristic(characteristic);
       const val = await characteristic.readValue();
       const decoded = new TextDecoder().decode(val);
-
       if (decoded) {
         const networksArray = decoded.split(",").filter((n) => n.trim() !== "");
         const uniqueNetworks = [...new Set(networksArray)];
@@ -309,8 +324,6 @@ export default function App() {
       }
       setWifiModalOpen(true);
     } catch (error) {
-      console.error(error);
-      // Si el error dice algo de "Security" o "Not supported", lanzamos el plan B
       if (
         error.message &&
         (error.message.includes("Bluetooth") ||
@@ -333,13 +346,11 @@ export default function App() {
       const payload = `${tempSsid}||${tempPass}||${currentUser.uid}`;
       const encoder = new TextEncoder();
       await bleCharacteristic.writeValue(encoder.encode(payload));
-
       const newDeviceName = "Conserje Inteligente";
       if (!pairedDevices.includes(newDeviceName)) {
         const updatedDevices = [...pairedDevices, newDeviceName];
         await set(ref(db, `users/${currentUser.uid}/devices`), updatedDevices);
       }
-
       alert("¡Producto configurado con éxito! Se está conectando a tu red.");
       setWifiModalOpen(false);
       setTempSsid("");
@@ -350,7 +361,6 @@ export default function App() {
     }
   };
 
-  // Función para copiar el UID en el portapapeles (iOS Modal)
   const handleCopyUID = () => {
     if (currentUser) {
       navigator.clipboard.writeText(currentUser.uid);
@@ -359,7 +369,6 @@ export default function App() {
     }
   };
 
-  // Función ficticia para simular que ya terminó con el portal WiFi
   const handleFinishWiFiSetup = async () => {
     const newDeviceName = "Conserje Inteligente";
     if (!pairedDevices.includes(newDeviceName)) {
@@ -367,6 +376,18 @@ export default function App() {
       await set(ref(db, `users/${currentUser.uid}/devices`), updatedDevices);
     }
     setShowiOSModal(false);
+  };
+
+  const toggleAiState = async () => {
+    if (currentUser) {
+      const newState = !aiEnabled;
+      setAiEnabled(newState);
+      await set(
+        ref(db, `users/${currentUser.uid}/settings/aiEnabled`),
+        newState
+      );
+      if (!newState && isFluidModeRef.current) stopFluidMode();
+    }
   };
 
   const handleAddName = async () => {
@@ -399,7 +420,7 @@ export default function App() {
   };
 
   const handleOpenDoor = async () => {
-    if (doorStatus !== "idle" || !currentUser) return;
+    if (doorStatus !== "idle" || !currentUser || !deviceOnline) return;
     setDoorStatus("opening");
     try {
       await set(ref(db, `users/${currentUser.uid}/puerta/estado`), "ABRIR");
@@ -613,6 +634,7 @@ export default function App() {
   };
 
   const toggleFluidMode = () => {
+    if (!aiEnabled) return; // Si la IA está apagada, no hacemos nada
     if (isFluidModeRef.current) {
       stopFluidMode();
     } else {
@@ -652,7 +674,7 @@ export default function App() {
 
   const handleSimulateVisitor = async (textOverride) => {
     const textToSend = textOverride || chatInput;
-    if (!textToSend.trim() || isTyping) return;
+    if (!textToSend.trim() || isTyping || !aiEnabled) return;
 
     if (!apiKey) {
       setChatHistory((prev) => [
@@ -960,7 +982,7 @@ export default function App() {
 
   return (
     <div className="fixed inset-0 w-screen h-[100dvh] bg-[#f3f4f6] flex items-center justify-center font-sans text-slate-900 overflow-hidden">
-      {/* 1. MODAL BLUETOOTH NORMAL (PARA ANDROID Y CHROME) */}
+      {/* 1. MODAL BLUETOOTH */}
       {wifiModalOpen && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl p-6 w-full max-w-sm shadow-2xl animate-in zoom-in duration-300">
@@ -1029,7 +1051,7 @@ export default function App() {
         </div>
       )}
 
-      {/* 2. MODAL "ANTI-TONTOS" PARA iOS Y NAVEGADORES SIN BLUETOOTH */}
+      {/* 2. MODAL "ANTI-TONTOS" PARA iOS CON "LLAVE DE SEGURIDAD" */}
       {showiOSModal && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl p-6 w-full max-w-sm shadow-2xl animate-in zoom-in duration-300 flex flex-col items-center">
@@ -1050,7 +1072,7 @@ export default function App() {
                   PASO 1
                 </span>
                 <p className="text-xs font-bold text-slate-700 mb-2">
-                  Copia tu identificador de seguridad:
+                  Copia tu Llave de Seguridad MicroSmart:
                 </p>
                 <button
                   onClick={handleCopyUID}
@@ -1062,11 +1084,11 @@ export default function App() {
                 >
                   {copiedUID ? (
                     <>
-                      <Check size={16} className="mr-2" /> ¡COPIADO!
+                      <Check size={16} className="mr-2" /> ¡LLAVE COPIADA!
                     </>
                   ) : (
                     <>
-                      <Copy size={16} className="mr-2" /> COPIAR CÓDIGO
+                      <Copy size={16} className="mr-2" /> COPIAR LLAVE
                     </>
                   )}
                 </button>
@@ -1140,10 +1162,13 @@ export default function App() {
         <div className="flex-1 overflow-y-auto pb-24 px-6 pt-2 scrollbar-hide">
           {activeTab === "home" && (
             <div className="flex flex-col items-center space-y-8 py-8 animate-in fade-in zoom-in duration-500">
+              {/* --- INDICADOR REAL DE CONEXIÓN ONLINE / OFFLINE --- */}
               <div
                 className={`inline-flex items-center space-x-2 px-4 py-1.5 rounded-full text-[10px] font-bold transition-all ${
                   pairedDevices.length === 0
                     ? "bg-amber-50 text-amber-600"
+                    : !deviceOnline
+                    ? "bg-red-50 text-red-600"
                     : doorStatus === "idle"
                     ? "bg-green-50 text-green-600"
                     : "bg-blue-50 text-blue-600"
@@ -1153,6 +1178,8 @@ export default function App() {
                   className={`w-2 h-2 rounded-full ${
                     pairedDevices.length === 0
                       ? "bg-amber-500"
+                      : !deviceOnline
+                      ? "bg-red-500 animate-pulse"
                       : doorStatus === "idle"
                       ? "bg-green-500"
                       : "bg-blue-500 animate-pulse"
@@ -1161,14 +1188,21 @@ export default function App() {
                 <span>
                   {pairedDevices.length === 0
                     ? "SIN DISPOSITIVOS"
+                    : !deviceOnline
+                    ? "SISTEMA OFFLINE"
                     : "SISTEMA ONLINE"}
                 </span>
               </div>
+
               <button
                 onClick={handleOpenDoor}
-                disabled={doorStatus !== "idle" || pairedDevices.length === 0}
+                disabled={
+                  doorStatus !== "idle" ||
+                  pairedDevices.length === 0 ||
+                  !deviceOnline
+                }
                 className={`relative w-56 h-56 rounded-full flex flex-col items-center justify-center shadow-2xl transition-all duration-300 transform active:scale-95 ${
-                  pairedDevices.length === 0
+                  pairedDevices.length === 0 || !deviceOnline
                     ? "bg-slate-200 text-slate-400 shadow-none"
                     : doorStatus === "idle"
                     ? "bg-gradient-to-tr from-[#6aa600] to-[#8be000] shadow-[#7bc100]/30"
@@ -1182,14 +1216,14 @@ export default function App() {
                     <Power
                       size={56}
                       className={`${
-                        pairedDevices.length === 0
+                        pairedDevices.length === 0 || !deviceOnline
                           ? "text-slate-400"
                           : "text-white"
                       } mb-2`}
                     />
                     <span
                       className={`${
-                        pairedDevices.length === 0
+                        pairedDevices.length === 0 || !deviceOnline
                           ? "text-slate-400"
                           : "text-white"
                       } text-xl font-black`}
@@ -1226,27 +1260,41 @@ export default function App() {
 
           {activeTab === "ai" && (
             <div className="flex flex-col h-full animate-in slide-in-from-bottom-4 duration-500 bg-slate-50 -mx-6 rounded-t-[2.5rem] overflow-hidden border-t border-slate-200">
-              <div className="p-5 pb-2 flex justify-between items-center bg-white/50 backdrop-blur-sm sticky top-0 z-10">
+              {/* PANEL SUPERIOR DE LA IA CON INTERRUPTOR */}
+              <div className="p-4 bg-white border-b border-slate-100 flex justify-between items-center shadow-sm z-10 sticky top-0">
                 <div>
-                  <h2 className="text-lg font-black text-slate-800 flex items-center">
-                    <Sparkles size={18} className="mr-2 text-[#00479b]" />{" "}
+                  <h2 className="text-sm font-black text-slate-800 flex items-center">
+                    <Sparkles size={16} className="mr-1 text-[#00479b]" /> Panel
                     Conserje IA
                   </h2>
-                  <p className="text-[9px] font-bold text-slate-400 mt-1 uppercase tracking-widest">
-                    Conversación Fluida
+                  <p className="text-[10px] font-bold text-slate-500">
+                    {aiEnabled
+                      ? "Respondiendo visitas automáticamente"
+                      : "Pausado. Atención manual."}
                   </p>
                 </div>
-                <div
-                  className={`px-2 py-1 ${
-                    isFluidMode
-                      ? "bg-green-100 text-green-700"
-                      : "bg-slate-100 text-slate-500"
-                  } text-[8px] font-black rounded-full`}
+                <button
+                  onClick={toggleAiState}
+                  className={`w-12 h-6 rounded-full transition-all flex items-center p-1 ${
+                    aiEnabled ? "bg-[#7bc100]" : "bg-slate-300"
+                  }`}
                 >
-                  {isFluidMode ? "CONSERJE DESPIERTO" : "MODO DORMIDO"}
-                </div>
+                  <div
+                    className={`w-4 h-4 bg-white rounded-full shadow-md transition-all ${
+                      aiEnabled ? "translate-x-6" : "translate-x-0"
+                    }`}
+                  ></div>
+                </button>
               </div>
+
               <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+                {!aiEnabled && (
+                  <div className="flex justify-center my-4">
+                    <span className="bg-amber-100 text-amber-700 text-[10px] font-bold px-3 py-1 rounded-full uppercase tracking-widest">
+                      Conserje descansando
+                    </span>
+                  </div>
+                )}
                 {chatHistory.map((msg, idx) => (
                   <div
                     key={idx}
@@ -1282,19 +1330,25 @@ export default function App() {
                 )}
                 <div ref={chatEndRef} />
               </div>
+
               <div className="p-4 bg-white border-t border-slate-100">
                 <div className="flex flex-col items-center space-y-4">
                   <button
                     onClick={toggleFluidMode}
+                    disabled={!aiEnabled}
                     className={`w-20 h-20 rounded-full flex items-center justify-center transition-all duration-500 shadow-xl ${
-                      isFluidMode
+                      !aiEnabled
+                        ? "bg-slate-100 opacity-50 cursor-not-allowed shadow-none"
+                        : isFluidMode
                         ? isListening
                           ? "bg-red-500 scale-110 animate-pulse ring-8 ring-red-100"
                           : "bg-amber-400 ring-8 ring-amber-50"
-                        : "bg-slate-200"
+                        : "bg-slate-200 hover:bg-slate-300"
                     }`}
                   >
-                    {isFluidMode ? (
+                    {!aiEnabled ? (
+                      <MicOff size={32} className="text-slate-400" />
+                    ) : isFluidMode ? (
                       isListening ? (
                         <Mic size={32} className="text-white" />
                       ) : (
@@ -1507,7 +1561,7 @@ export default function App() {
                 ) : (
                   <div className="text-center py-4 bg-slate-800/50 rounded-xl mb-4 border border-slate-700">
                     <p className="text-slate-400 text-xs font-bold">
-                      No hay dispositivos vinculados
+                      No hay telefonillos vinculados
                     </p>
                   </div>
                 )}
@@ -1518,13 +1572,13 @@ export default function App() {
                 >
                   {isPairing ? (
                     <span className="animate-pulse flex items-center">
-                      <Bluetooth size={16} className="mr-2" /> Buscando
-                      productos...
+                      <Bluetooth size={16} className="mr-2" /> Escaneando por
+                      Bluetooth...
                     </span>
                   ) : (
                     <>
-                      <Bluetooth size={16} className="mr-2" /> Emparejar
-                      Producto
+                      <Bluetooth size={16} className="mr-2" /> Emparejar Nuevo
+                      Dispositivo
                     </>
                   )}
                 </button>
