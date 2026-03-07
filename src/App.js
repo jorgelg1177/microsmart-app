@@ -34,6 +34,9 @@ import {
   Key,
   Copy,
   Check,
+  Plus,
+  Edit2,
+  Trash2,
 } from "lucide-react";
 
 import { initializeApp } from "firebase/app";
@@ -47,6 +50,7 @@ import {
 } from "firebase/auth";
 import { getDatabase, ref, set, push, onValue } from "firebase/database";
 
+// =========================================================================
 const firebaseConfig = {
   apiKey: "AIzaSyAyQe2Ev40lMOx6_gNvMGv6P86oRrGlHvg",
   authDomain: "portero-a87d8.firebaseapp.com",
@@ -61,6 +65,7 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getDatabase(app);
+// =========================================================================
 
 const fetchWithRetry = async (url, options, retries = 2, delay = 1000) => {
   try {
@@ -88,8 +93,11 @@ const fetchWithRetry = async (url, options, retries = 2, delay = 1000) => {
   }
 };
 
-const MicroSmartLogo = ({ className }) => (
-  <div className={className}>
+const MicroSmartLogo = ({ className, onClick }) => (
+  <div
+    className={`${className} cursor-pointer hover:opacity-80 transition-opacity`}
+    onClick={onClick}
+  >
     <img
       src="/logo.png"
       alt="MicroSmart Logo"
@@ -169,6 +177,11 @@ export default function App() {
   const [aiEnabled, setAiEnabled] = useState(true);
   const [deviceOnline, setDeviceOnline] = useState(false);
 
+  // --- NUEVOS ESTADOS DE PERFIL ---
+  const [userName, setUserName] = useState("");
+  const [isEditingName, setIsEditingName] = useState(false);
+  const [tempName, setTempName] = useState("");
+
   const isFluidModeRef = useRef(false);
   const isProcessingRef = useRef(false);
   const isSpeakingRef = useRef(false);
@@ -177,7 +190,7 @@ export default function App() {
   const apiHistoryRef = useRef([]);
   const authorizedNamesRef = useRef(authorizedNames);
   const chatEndRef = useRef(null);
-  const lastBeatRef = useRef(Date.now()); // Referencia para el vigilante
+  const lastBeatRef = useRef(Date.now());
 
   const [chatHistory, setChatHistory] = useState([
     {
@@ -201,6 +214,7 @@ export default function App() {
         setMessagesList([]);
         setDeviceOnline(false);
         setAiEnabled(true);
+        setUserName("");
       }
     });
     return () => unsubscribe();
@@ -236,7 +250,6 @@ export default function App() {
         );
       });
 
-      // SISTEMA DE RECEPCIÓN DEL LATIDO
       onValue(ref(db, `users/${uid}/puerta/heartbeat`), (s) => {
         if (s.exists()) {
           lastBeatRef.current = Date.now();
@@ -247,16 +260,18 @@ export default function App() {
       onValue(ref(db, `users/${uid}/settings/aiEnabled`), (s) => {
         if (s.exists()) setAiEnabled(s.val());
       });
+
+      // Cargar Nombre Personalizado
+      onValue(ref(db, `users/${uid}/settings/userName`), (s) => {
+        if (s.exists()) setUserName(s.val());
+        else setUserName(currentUser.email.split("@")[0]); // Fallback al nombre del correo
+      });
     }
   }, [currentUser]);
 
-  // --- VIGILANTE DEL LATIDO ---
   useEffect(() => {
     const checker = setInterval(() => {
-      // Si pasan más de 12 segundos sin noticias, asumimos que se cortó la luz
-      if (Date.now() - lastBeatRef.current > 12000) {
-        setDeviceOnline(false);
-      }
+      if (Date.now() - lastBeatRef.current > 12000) setDeviceOnline(false);
     }, 3000);
     return () => clearInterval(checker);
   }, []);
@@ -302,6 +317,31 @@ export default function App() {
   const saveMessage = async (newMessage) => {
     if (currentUser)
       await push(ref(db, `users/${currentUser.uid}/messages`), newMessage);
+  };
+
+  // --- ACTUALIZAR PERFIL ---
+  const handleSaveName = async () => {
+    if (currentUser && tempName.trim() !== "") {
+      await set(
+        ref(db, `users/${currentUser.uid}/settings/userName`),
+        tempName.trim()
+      );
+      setIsEditingName(false);
+    }
+  };
+
+  // --- GESTIÓN DE DISPOSITIVOS ---
+  const handleRemoveDevice = async (deviceNameToRemove) => {
+    if (!currentUser) return;
+    const isConfirmed = window.confirm(
+      `¿Estás seguro de que quieres desvincular el equipo "${deviceNameToRemove}"?`
+    );
+    if (isConfirmed) {
+      const updatedDevices = pairedDevices.filter(
+        (dev) => dev !== deviceNameToRemove
+      );
+      await set(ref(db, `users/${currentUser.uid}/devices`), updatedDevices);
+    }
   };
 
   const iniciarConexionBluetooth = async () => {
@@ -389,7 +429,8 @@ export default function App() {
     setShowiOSModal(false);
   };
 
-  const toggleAiState = async () => {
+  const toggleAiState = async (e) => {
+    if (e) e.stopPropagation(); // Evita que al tocar el botón se active el click de la tarjeta
     if (currentUser) {
       const newState = !aiEnabled;
       setAiEnabled(newState);
@@ -440,7 +481,7 @@ export default function App() {
         id: Date.now(),
         type: "manual",
         title: "Apertura Manual",
-        desc: `Desde App por ${currentUser.email}`,
+        desc: `Desde App por ${userName}`,
         time: getCurrentTime(),
         date: "Hoy",
       });
@@ -1141,9 +1182,13 @@ export default function App() {
       )}
 
       <div className="w-full max-w-md h-full md:h-[92vh] md:max-h-[850px] md:rounded-[3rem] bg-white shadow-[0_20px_50px_rgba(0,0,0,0.1)] overflow-hidden flex flex-col relative md:border-[10px] border-[#1e293b]">
+        {/* --- HEADER SUPERIOR (AHORA CON CLICK EN LOGO Y PERFIL EDITABLE) --- */}
         <div className="bg-white px-6 pt-8 pb-3 flex flex-col z-10 border-b border-slate-50 shrink-0">
           <div className="flex justify-between items-center mb-3">
-            <MicroSmartLogo className="h-[110px] w-auto flex items-center" />
+            <MicroSmartLogo
+              className="h-[110px] w-auto flex items-center"
+              onClick={() => setActiveTab("home")}
+            />
             <div className="flex space-x-1">
               <button
                 onClick={handleLogout}
@@ -1153,28 +1198,62 @@ export default function App() {
               </button>
             </div>
           </div>
-          <div className="flex items-center space-x-3 p-3 bg-slate-50 rounded-2xl border border-slate-100">
-            <div className="w-10 h-10 bg-[#00479b] rounded-xl flex items-center justify-center shadow-lg shadow-blue-900/10 shrink-0">
-              <User size={20} className="text-white" />
+
+          <div className="flex items-center justify-between p-3 bg-slate-50 rounded-2xl border border-slate-100">
+            <div className="flex items-center space-x-3">
+              <div className="w-10 h-10 bg-[#00479b] rounded-xl flex items-center justify-center shadow-lg shadow-blue-900/10 shrink-0">
+                <User size={20} className="text-white" />
+              </div>
+              <div className="overflow-hidden">
+                {isEditingName ? (
+                  <div className="flex space-x-2">
+                    <input
+                      type="text"
+                      autoFocus
+                      value={tempName}
+                      onChange={(e) => setTempName(e.target.value)}
+                      onBlur={handleSaveName}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") handleSaveName();
+                      }}
+                      className="bg-white border border-slate-200 rounded px-2 py-1 text-sm font-bold text-slate-800 focus:outline-none w-28"
+                    />
+                  </div>
+                ) : (
+                  <>
+                    <h1 className="text-base font-bold text-slate-800 leading-tight truncate">
+                      {userName}
+                    </h1>
+                    <p className="text-[9px] text-slate-400 font-medium truncate">
+                      {currentUser.email}
+                    </p>
+                  </>
+                )}
+              </div>
             </div>
-            <div className="overflow-hidden">
-              <h1 className="text-base font-bold text-slate-800 leading-tight truncate">
-                {currentUser.email}
-              </h1>
-              <p className="text-[10px] text-slate-500 font-medium flex items-center">
-                <MapPin size={10} className="mr-1 text-[#7bc100]" />{" "}
-                microsmart.es
-              </p>
-            </div>
+            {!isEditingName && (
+              <button
+                onClick={() => {
+                  setTempName(userName);
+                  setIsEditingName(true);
+                }}
+                className="p-2 hover:bg-slate-200 rounded-lg text-slate-400 transition-colors"
+              >
+                <Edit2 size={14} />
+              </button>
+            )}
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto pb-24 px-6 pt-2 scrollbar-hide">
+        <div className="flex-1 overflow-y-auto pb-24 px-6 pt-2 scrollbar-hide bg-slate-50/50">
+          {/* ========================================================= */}
+          {/* TAB: INICIO (HOME) REESTRUCTURADO COMO DASHBOARD          */}
+          {/* ========================================================= */}
           {activeTab === "home" && (
-            <div className="flex flex-col items-center space-y-8 py-8 animate-in fade-in zoom-in duration-500">
-              {/* --- INDICADOR REAL DE CONEXIÓN ONLINE / OFFLINE --- */}
+            <div className="flex flex-col items-center py-6 animate-in fade-in zoom-in duration-500 h-full">
+              {/* STATUS INDICATOR */}
               <div
-                className={`inline-flex items-center space-x-2 px-4 py-1.5 rounded-full text-[10px] font-bold transition-all ${
+                className={`inline-flex items-center space-x-2 px-4 py-1.5 rounded-full text-[10px] font-bold transition-all mb-8 ${
                   pairedDevices.length === 0
                     ? "bg-amber-50 text-amber-600"
                     : !deviceOnline
@@ -1204,6 +1283,7 @@ export default function App() {
                 </span>
               </div>
 
+              {/* BOTÓN GIGANTE CENTRAL */}
               <button
                 onClick={handleOpenDoor}
                 disabled={
@@ -1211,7 +1291,7 @@ export default function App() {
                   pairedDevices.length === 0 ||
                   !deviceOnline
                 }
-                className={`relative w-56 h-56 rounded-full flex flex-col items-center justify-center shadow-2xl transition-all duration-300 transform active:scale-95 ${
+                className={`relative w-48 h-48 rounded-full flex flex-col items-center justify-center shadow-2xl transition-all duration-300 transform active:scale-95 ${
                   pairedDevices.length === 0 || !deviceOnline
                     ? "bg-slate-200 text-slate-400 shadow-none"
                     : doorStatus === "idle"
@@ -1224,7 +1304,7 @@ export default function App() {
                 {doorStatus === "idle" && (
                   <>
                     <Power
-                      size={56}
+                      size={48}
                       className={`${
                         pairedDevices.length === 0 || !deviceOnline
                           ? "text-slate-400"
@@ -1245,7 +1325,7 @@ export default function App() {
                 {doorStatus === "opening" && (
                   <>
                     <ShieldCheck
-                      size={56}
+                      size={48}
                       className="text-white mb-2 animate-bounce"
                     />
                     <span className="text-white text-lg font-bold">
@@ -1256,7 +1336,7 @@ export default function App() {
                 {doorStatus === "opened" && (
                   <>
                     <CheckCircle2
-                      size={56}
+                      size={48}
                       className="text-white mb-2 animate-in zoom-in"
                     />
                     <span className="text-white text-xl font-black">
@@ -1265,12 +1345,72 @@ export default function App() {
                   </>
                 )}
               </button>
+
+              {/* TARJETAS DE ACCESO RÁPIDO (BOTTOM) */}
+              <div className="grid grid-cols-2 gap-4 w-full mt-auto mb-4 px-2">
+                {/* TARJETA 1: CONSERJE IA */}
+                <div
+                  onClick={() => setActiveTab("ai")}
+                  className="bg-white p-4 rounded-3xl shadow-sm border border-slate-100 flex flex-col cursor-pointer hover:shadow-md transition-all active:scale-95"
+                >
+                  <div className="flex justify-between items-start mb-3">
+                    <div
+                      className={`p-2 rounded-xl ${
+                        aiEnabled
+                          ? "bg-blue-50 text-[#00479b]"
+                          : "bg-slate-100 text-slate-400"
+                      }`}
+                    >
+                      <Bot size={20} />
+                    </div>
+                    <button
+                      onClick={toggleAiState}
+                      className={`w-10 h-5 rounded-full transition-all flex items-center p-0.5 ${
+                        aiEnabled ? "bg-[#7bc100]" : "bg-slate-300"
+                      }`}
+                    >
+                      <div
+                        className={`w-4 h-4 bg-white rounded-full shadow-md transition-all ${
+                          aiEnabled ? "translate-x-5" : "translate-x-0"
+                        }`}
+                      ></div>
+                    </button>
+                  </div>
+                  <h4 className="font-black text-slate-800 text-sm">
+                    Conserje IA
+                  </h4>
+                  <p
+                    className={`text-[10px] font-bold ${
+                      aiEnabled ? "text-[#7bc100]" : "text-slate-400"
+                    }`}
+                  >
+                    {aiEnabled ? "Activo ahora" : "Pausado"}
+                  </p>
+                </div>
+
+                {/* TARJETA 2: VINCULAR DISPOSITIVO */}
+                <div
+                  onClick={iniciarConexionBluetooth}
+                  className="bg-white p-4 rounded-3xl shadow-sm border border-slate-100 flex flex-col cursor-pointer hover:shadow-md transition-all active:scale-95 group"
+                >
+                  <div className="flex justify-between items-start mb-3">
+                    <div className="p-2 rounded-xl bg-slate-50 text-slate-600 group-hover:bg-[#00479b] group-hover:text-white transition-colors">
+                      <Plus size={20} />
+                    </div>
+                  </div>
+                  <h4 className="font-black text-slate-800 text-sm">
+                    Añadir Equipo
+                  </h4>
+                  <p className="text-[10px] font-bold text-slate-400">
+                    Vincular nuevo
+                  </p>
+                </div>
+              </div>
             </div>
           )}
 
           {activeTab === "ai" && (
             <div className="flex flex-col h-full animate-in slide-in-from-bottom-4 duration-500 bg-slate-50 -mx-6 rounded-t-[2.5rem] overflow-hidden border-t border-slate-200">
-              {/* PANEL SUPERIOR DE LA IA CON INTERRUPTOR */}
               <div className="p-4 bg-white border-b border-slate-100 flex justify-between items-center shadow-sm z-10 sticky top-0">
                 <div>
                   <h2 className="text-sm font-black text-slate-800 flex items-center">
@@ -1538,43 +1678,63 @@ export default function App() {
             </div>
           )}
 
+          {/* ========================================================= */}
+          {/* TAB: AJUSTES (SETTINGS)                                   */}
+          {/* ========================================================= */}
           {activeTab === "settings" && (
             <div className="animate-in fade-in slide-in-from-right-4 duration-500 space-y-5 py-4">
               <h2 className="text-xl font-black text-slate-800 mb-6 tracking-tight">
                 Configuración
               </h2>
 
+              {/* MÓDULO IOT: VINCULAR DISPOSITIVOS */}
               <div className="bg-gradient-to-br from-slate-800 to-slate-900 rounded-3xl p-5 shadow-lg">
                 <div className="flex items-center space-x-3 text-white mb-4">
                   <Smartphone size={18} className="text-[#7bc100]" />
-                  <h3 className="font-bold text-sm">Dispositivos MicroSmart</h3>
+                  <h3 className="font-bold text-sm">Tus Equipos</h3>
                 </div>
+
                 {pairedDevices.length > 0 ? (
-                  <div className="space-y-2 mb-4">
+                  <div className="space-y-3 mb-4">
                     {pairedDevices.map((dev, idx) => (
                       <div
                         key={idx}
-                        className="bg-slate-800/50 border border-slate-700 p-3 rounded-xl flex justify-between items-center"
+                        className="bg-slate-800/50 border border-slate-700 p-3 rounded-xl flex justify-between items-center group"
                       >
                         <div>
                           <span className="text-white font-bold text-xs block">
                             {dev}
                           </span>
-                          <span className="text-green-400 text-[9px] font-bold">
-                            Conectado a la cuenta
-                          </span>
+                          {deviceOnline ? (
+                            <span className="text-[#7bc100] text-[9px] font-bold flex items-center">
+                              <span className="w-1.5 h-1.5 rounded-full bg-[#7bc100] mr-1"></span>
+                              En línea
+                            </span>
+                          ) : (
+                            <span className="text-red-400 text-[9px] font-bold flex items-center">
+                              <span className="w-1.5 h-1.5 rounded-full bg-red-400 mr-1"></span>
+                              Desconectado
+                            </span>
+                          )}
                         </div>
-                        <CheckCircle2 size={16} className="text-green-500" />
+                        <button
+                          onClick={() => handleRemoveDevice(dev)}
+                          className="p-2 text-slate-500 hover:text-red-400 transition-colors hover:bg-slate-700 rounded-lg"
+                          title="Eliminar equipo"
+                        >
+                          <Trash2 size={16} />
+                        </button>
                       </div>
                     ))}
                   </div>
                 ) : (
                   <div className="text-center py-4 bg-slate-800/50 rounded-xl mb-4 border border-slate-700">
                     <p className="text-slate-400 text-xs font-bold">
-                      No hay telefonillos vinculados
+                      No hay dispositivos en tu hogar
                     </p>
                   </div>
                 )}
+
                 <button
                   onClick={iniciarConexionBluetooth}
                   disabled={isPairing}
@@ -1582,18 +1742,17 @@ export default function App() {
                 >
                   {isPairing ? (
                     <span className="animate-pulse flex items-center">
-                      <Bluetooth size={16} className="mr-2" /> Escaneando por
-                      Bluetooth...
+                      <Bluetooth size={16} className="mr-2" /> Escaneando...
                     </span>
                   ) : (
                     <>
-                      <Bluetooth size={16} className="mr-2" /> Emparejar Nuevo
-                      Dispositivo
+                      <Plus size={16} className="mr-2" /> Añadir otro equipo
                     </>
                   )}
                 </button>
               </div>
 
+              {/* MÓDULO USUARIOS AUTORIZADOS */}
               <div className="bg-white rounded-3xl p-5 shadow-sm border border-slate-100">
                 <div className="flex items-center space-x-3 mb-4">
                   <UserPlus size={18} className="text-[#00479b]" />
